@@ -1,0 +1,333 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --font-heading: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-surface-light text-slate-900 dark:bg-surface-dark dark:text-slate-100 font-sans antialiased transition-colors duration-200 selection:bg-brand-500 selection:text-white;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
+
+/* Custom Glassmorphism & Micro Utilities */
+.glass-panel-light {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.glass-panel-dark {
+  background: rgba(18, 20, 28, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subtle-mesh-light {
+  background-image: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+                    radial-gradient(at 100% 100%, rgba(129, 140, 248, 0.06) 0px, transparent 50%);
+}
+
+.subtle-mesh-dark {
+  background-image: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 60%),
+                    radial-gradient(at 100% 100%, rgba(79, 70, 229, 0.08) 0px, transparent 60%);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
+}
+
+/* Uiverse.io Kinetic Text Slice Loader */
+.uiverse-text-loader {
+  --main-size: 3.5em;
+  --text-color: #4f46e5;
+  --shine-color: rgba(99, 102, 241, 0.4);
+  --shadow-color: #94a3b8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  user-select: none;
+  position: relative;
+  font-size: var(--main-size);
+  font-weight: 900;
+  text-transform: uppercase;
+  color: var(--text-color);
+  width: 7.5em;
+  height: 1.2em;
+  filter: drop-shadow(0 0 0.05em var(--shine-color));
+}
+
+.dark .uiverse-text-loader {
+  --text-color: #ffffff;
+  --shine-color: rgba(255, 255, 255, 0.4);
+  --shadow-color: #64748b;
+}
+
+.uiverse-text-loader .text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  position: absolute;
+}
+
+.uiverse-text-loader .text:nth-child(1) {
+  clip-path: polygon(0% 0%, 11.11% 0%, 11.11% 100%, 0% 100%);
+  font-size: calc(var(--main-size) / 20);
+  margin-left: -2.1em;
+  opacity: 0.6;
+}
+
+.uiverse-text-loader .text:nth-child(2) {
+  clip-path: polygon(11.11% 0%, 22.22% 0%, 22.22% 100%, 11.11% 100%);
+  font-size: calc(var(--main-size) / 16);
+  margin-left: -0.98em;
+  opacity: 0.7;
+}
+
+.uiverse-text-loader .text:nth-child(3) {
+  clip-path: polygon(22.22% 0%, 33.33% 0%, 33.33% 100%, 22.22% 100%);
+  font-size: calc(var(--main-size) / 13);
+  margin-left: -0.33em;
+  opacity: 0.8;
+}
+
+.uiverse-text-loader .text:nth-child(4) {
+  clip-path: polygon(33.33% 0%, 44.44% 0%, 44.44% 100%, 33.33% 100%);
+  font-size: calc(var(--main-size) / 11);
+  margin-left: -0.05em;
+  opacity: 0.9;
+}
+
+.uiverse-text-loader .text:nth-child(5) {
+  clip-path: polygon(44.44% 0%, 55.55% 0%, 55.55% 100%, 44.44% 100%);
+  font-size: calc(var(--main-size) / 10);
+  margin-left: 0em;
+  opacity: 1;
+}
+
+.uiverse-text-loader .text:nth-child(6) {
+  clip-path: polygon(55.55% 0%, 66.66% 0%, 66.66% 100%, 55.55% 100%);
+  font-size: calc(var(--main-size) / 11);
+  margin-left: 0.05em;
+  opacity: 0.9;
+}
+
+.uiverse-text-loader .text:nth-child(7) {
+  clip-path: polygon(66.66% 0%, 77.77% 0%, 77.77% 100%, 66.66% 100%);
+  font-size: calc(var(--main-size) / 13);
+  margin-left: 0.33em;
+  opacity: 0.8;
+}
+
+.uiverse-text-loader .text:nth-child(8) {
+  clip-path: polygon(77.77% 0%, 88.88% 0%, 88.88% 100%, 77.77% 100%);
+  font-size: calc(var(--main-size) / 16);
+  margin-left: 0.98em;
+  opacity: 0.7;
+}
+
+.uiverse-text-loader .text:nth-child(9) {
+  clip-path: polygon(88.88% 0%, 100% 0%, 100% 100%, 88.88% 100%);
+  font-size: calc(var(--main-size) / 20);
+  margin-left: 2.1em;
+  opacity: 0.6;
+}
+
+.uiverse-text-loader .text span {
+  animation:
+    uiverse-scrolling 2s cubic-bezier(0.1, 0.6, 0.9, 0.4) infinite,
+    uiverse-shadow 2s cubic-bezier(0.1, 0.6, 0.9, 0.4) infinite;
+}
+
+.uiverse-text-loader .text:nth-child(1) span {
+  background: linear-gradient(
+    to right,
+    var(--text-color) 4%,
+    var(--shadow-color) 7%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(2) span {
+  background: linear-gradient(
+    to right,
+    var(--text-color) 9%,
+    var(--shadow-color) 13%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(3) span {
+  background: linear-gradient(
+    to right,
+    var(--text-color) 15%,
+    var(--shadow-color) 18%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(4) span {
+  background: linear-gradient(
+    to right,
+    var(--text-color) 20%,
+    var(--shadow-color) 23%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(6) span {
+  background: linear-gradient(
+    to right,
+    var(--shadow-color) 29%,
+    var(--text-color) 32%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(7) span {
+  background: linear-gradient(
+    to right,
+    var(--shadow-color) 34%,
+    var(--text-color) 37%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(8) span {
+  background: linear-gradient(
+    to right,
+    var(--shadow-color) 39%,
+    var(--text-color) 42%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .text:nth-child(9) span {
+  background: linear-gradient(
+    to right,
+    var(--shadow-color) 45%,
+    var(--text-color) 48%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.uiverse-text-loader .line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  height: 0.05em;
+  width: calc(var(--main-size) / 2);
+  margin-top: 0.9em;
+  border-radius: 0.05em;
+}
+
+.uiverse-text-loader .line::before {
+  content: "";
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  background-color: var(--text-color);
+  opacity: 0.3;
+}
+
+.uiverse-text-loader .line::after {
+  content: "";
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  background-color: var(--text-color);
+  border-radius: 0.05em;
+  transform: translateX(-90%);
+  animation: uiverse-wobble 2s cubic-bezier(0.5, 0.8, 0.5, 0.2) infinite;
+}
+
+@keyframes uiverse-wobble {
+  0% {
+    transform: translateX(-90%);
+  }
+  50% {
+    transform: translateX(90%);
+  }
+  100% {
+    transform: translateX(-90%);
+  }
+}
+
+@keyframes uiverse-scrolling {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes uiverse-shadow {
+  0% {
+    background-position: -98% 0;
+  }
+  100% {
+    background-position: 102% 0;
+  }
+}

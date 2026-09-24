@@ -3,9 +3,12 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from resume_intellegence.text_extract import extract_text
 from resume_intellegence.text_clean import clean_resume_text
 from resume_intellegence.resume_analyzer import analyze_resume
+from api.auth import router as auth_router
 
 
 app = FastAPI(title="AI MOCKORA API")
+app.include_router(auth_router)
+
 
 
 @app.get("/")

@@ -10,3 +10,6 @@ google-genai>=1.0.0
 
 # Load environment variables from .env file
 python-dotenv>=1.0.0
+
+# LangGraph — AI workflow orchestration layer
+langgraph>=0.2.0

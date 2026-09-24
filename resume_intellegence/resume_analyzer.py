@@ -653,17 +653,3 @@ def analyze_resume(cleaned_text: str) -> dict:
     )
 
     return profile
-def analyze_resume(cleaned_text: str) -> dict:
-    raw_response = _call_gemini(
-        SYSTEM_PROMPT,
-        build_user_prompt(cleaned_text)
-    )
-
-    try:
-        data = json.loads(raw_response)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Gemini returned invalid JSON:\n{raw_response}"
-        ) from exc
-
-    return _clean_profile(data)    

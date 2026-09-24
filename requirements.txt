@@ -1,0 +1,12 @@
+# ============================================================
+# AI Mock Interview — Python Dependencies
+# ============================================================
+
+# PDF text extraction
+PyMuPDF>=1.28.2
+
+# Google Gemini LLM API (google-genai SDK)
+google-genai>=1.0.0
+
+# Load environment variables from .env file
+python-dotenv>=1.0.0

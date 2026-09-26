@@ -80,6 +80,22 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "DATABASE_URL is required"):
                 graph_module._get_postgres_checkpointer()
 
+    def test_database_url_sanitizes_prefix_and_quotes(self):
+        pool = MagicMock()
+        saver = MagicMock(spec=PostgresSaver)
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": 'DATABASE_URL="postgresql://test-clean"'}),
+            patch.object(graph_module, "_checkpoint_pool", None),
+            patch.object(graph_module, "_postgres_checkpointer", None),
+            patch.object(graph_module, "_create_checkpoint_pool", return_value=pool) as create_pool,
+            patch.object(graph_module, "_initialize_checkpoint_schema") as initialize_schema,
+            patch.object(graph_module, "PostgresSaver", return_value=saver),
+        ):
+            graph_module._get_postgres_checkpointer()
+
+        create_pool.assert_called_once_with("postgresql://test-clean")
+        initialize_schema.assert_called_once_with("postgresql://test-clean")
+
     def test_pool_uses_postgres_saver_connection_requirements(self):
         with patch.object(graph_module, "ConnectionPool") as pool_factory:
             graph_module._create_checkpoint_pool("postgresql://test")

@@ -157,6 +157,14 @@ def _get_postgres_checkpointer() -> PostgresSaver:
 
         database_url = os.getenv("DATABASE_URL", "").strip()
 
+        # Defensively sanitize accidental key-prefix or quotes from copy-pasting in UI dashboards
+        if database_url.startswith("DATABASE_URL="):
+            database_url = database_url[len("DATABASE_URL="):].strip()
+        if (database_url.startswith('"') and database_url.endswith('"')) or (
+            database_url.startswith("'") and database_url.endswith("'")
+        ):
+            database_url = database_url[1:-1].strip()
+
         if not database_url:
             raise RuntimeError(
                 "DATABASE_URL is required for LangGraph PostgreSQL checkpointing. "

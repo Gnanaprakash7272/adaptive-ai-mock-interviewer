@@ -19,11 +19,14 @@ import type {
 } from '../types';
 
 
-export const getApiBaseUrl = (): string => {
-  return localStorage.getItem('ai_mockora_api_url') || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-};
-
 const TOKEN_KEY = 'ai_mockora_access_token';
+const API_BASE_URL_KEY = 'ai_mockora_api_url';
+
+export const getApiBaseUrl = (): string => {
+  if (import.meta.env.PROD) return '';
+
+  return localStorage.getItem(API_BASE_URL_KEY) || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+};
 
 export const getAccessToken = (): string | null => {
   return localStorage.getItem(TOKEN_KEY);
@@ -43,6 +46,10 @@ export const clearAccessToken = (): void => {
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const token = getAccessToken();
   const headers = new Headers(options.headers || {});
+
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
   
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);

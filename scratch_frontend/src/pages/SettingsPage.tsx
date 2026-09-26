@@ -61,8 +61,13 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSaveSettings = () => {
-    localStorage.setItem('ai_mockora_api_url', apiBaseUrl.trim());
-    addToast('success', 'Preferences Saved!', 'FastAPI Endpoint and user settings persisted in browser storage.');
+    if (import.meta.env.DEV) {
+      localStorage.setItem('ai_mockora_api_url', apiBaseUrl.trim());
+      addToast('success', 'Preferences Saved!', 'FastAPI endpoint saved in browser storage.');
+      return;
+    }
+
+    addToast('success', 'Preferences Saved!', 'Your preferences have been saved.');
   };
 
   return (
@@ -76,11 +81,11 @@ export const SettingsPage: React.FC = () => {
           Platform Settings
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Configure FastAPI backend endpoints, theme preferences, microphone calibration, and candidate credentials.
+          Configure theme preferences, microphone calibration, and candidate account settings.
         </p>
       </div>
 
-      {/* 14. FASTAPI & LANGGRAPH BACKEND CONFIGURATION */}
+      {import.meta.env.DEV && (
       <Card className="p-6 space-y-4 border-2 border-brand-500/20">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
@@ -136,6 +141,7 @@ export const SettingsPage: React.FC = () => {
           )}
         </div>
       </Card>
+      )}
 
       {/* THEME CONFIGURATION CARD */}
       <Card className="p-6 space-y-4">

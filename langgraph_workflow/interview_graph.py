@@ -51,18 +51,20 @@ from __future__ import annotations
 
 import logging
 import os
-import sqlite3
+import threading
 
 from dotenv import load_dotenv
 
+# Load local configuration before LangGraph initializes its serializer.
+load_dotenv(override=True)
+
 from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.types import interrupt
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from langgraph_workflow.interview_state import InterviewState
-
-# Load .env before any AI module reads env vars.
-load_dotenv(override=True)
 
 # ---------------------------------------------------------------------------
 # Import existing pure AI functions — zero logic duplication.
@@ -75,12 +77,14 @@ from report_intellegence.report_generator import generate_narrative as _generate
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Absolute path for the SQLite checkpoint database.
-# Using an absolute path ensures the file lands in the project root
-# regardless of which directory uvicorn / the test runner is started from.
+# A transaction-scoped PostgreSQL advisory lock serializes checkpoint schema
+# migrations across separate serverless instances as well as local processes.
 # ---------------------------------------------------------------------------
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-_CHECKPOINTS_DB_PATH = os.path.join(_PROJECT_ROOT, "checkpoints.db")
+_CHECKPOINT_SETUP_LOCK_ID = 0x4D4F434B4F5241
+_checkpoint_store_lock = threading.Lock()
+_checkpoint_pool: ConnectionPool | None = None
+_postgres_checkpointer: PostgresSaver | None = None
+_interview_graph = None
 
 # ---------------------------------------------------------------------------
 # Module-level constant — role → default topic list.
@@ -103,6 +107,66 @@ _ROLE_TOPIC_MAP: dict[str, list[str]] = {
 _DEFAULT_TOPICS: list[str] = [
     "Technical Skills", "System Design", "Problem Solving", "Domain Knowledge", "Best Practices"
 ]
+
+
+def _create_checkpoint_pool(database_url: str) -> ConnectionPool:
+    """Create a bounded pool suitable for a warm serverless function instance."""
+    return ConnectionPool(
+        conninfo=database_url,
+        min_size=0,
+        max_size=1,
+        kwargs={
+            "autocommit": True,
+            "row_factory": dict_row,
+            "prepare_threshold": 0,
+        },
+        open=False,
+        check=ConnectionPool.check_connection,
+        name="mockora-langgraph-checkpoints",
+    )
+
+
+def _initialize_checkpoint_schema(pool: ConnectionPool) -> None:
+    """Apply PostgresSaver migrations once per process under a database lock."""
+    with pool.connection() as connection:
+        with connection.transaction():
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(%s)",
+                (_CHECKPOINT_SETUP_LOCK_ID,),
+            )
+            PostgresSaver(connection).setup()
+
+
+def _get_postgres_checkpointer() -> PostgresSaver:
+    """Return the process-wide PostgresSaver, initializing its pool once."""
+    global _checkpoint_pool, _postgres_checkpointer
+
+    if _postgres_checkpointer is not None:
+        return _postgres_checkpointer
+
+    with _checkpoint_store_lock:
+        if _postgres_checkpointer is not None:
+            return _postgres_checkpointer
+
+        database_url = os.getenv("DATABASE_URL", "").strip()
+        if not database_url:
+            raise RuntimeError(
+                "DATABASE_URL is required for LangGraph PostgreSQL checkpointing. "
+                "Set it to the Supabase PostgreSQL session-pooler connection string."
+            )
+
+        pool = _create_checkpoint_pool(database_url)
+        try:
+            pool.open(wait=True, timeout=10)
+            _initialize_checkpoint_schema(pool)
+            checkpointer = PostgresSaver(pool)
+        except Exception:
+            pool.close()
+            raise
+
+        _checkpoint_pool = pool
+        _postgres_checkpointer = checkpointer
+        return checkpointer
 
 
 # ===========================================================================
@@ -617,11 +681,9 @@ def build_interview_graph(checkpointer=None):
 
     Args:
         checkpointer: A LangGraph checkpointer instance.
-                      Defaults to a SqliteSaver bound to an absolute path
-                      ``checkpoints.db`` at the project root, regardless of
-                      the process working directory.
-                      Pass a custom checkpointer (e.g. MemorySaver) for tests
-                      or when you manage the connection lifecycle yourself.
+                      Defaults to the process-wide PostgresSaver backed by
+                      DATABASE_URL. Pass a custom checkpointer (e.g.
+                      MemorySaver) for isolated tests.
 
     Returns:
         A compiled LangGraph CompiledStateGraph ready for invoke/stream.
@@ -640,15 +702,9 @@ def build_interview_graph(checkpointer=None):
         from langgraph.types import Command
         graph.invoke(Command(resume="My answer text"), config)
 
-    Note:
-        For production, create the SQLite connection in your application
-        lifespan handler and pass the resulting checkpointer here so the
-        connection is properly closed on shutdown.
     """
     if checkpointer is None:
-        conn = sqlite3.connect(_CHECKPOINTS_DB_PATH, check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
-        checkpointer.setup()
+        checkpointer = _get_postgres_checkpointer()
 
     builder = StateGraph(InterviewState)
 
@@ -689,11 +745,10 @@ def build_interview_graph(checkpointer=None):
 
 
 # ===========================================================================
-# Lazy module-level graph accessor
-# (avoids crashing on import in test/CI environments without checkpoints.db)
+# Lazy module-level graph accessor.
+# The Postgres pool is process-scoped and opens connections only when used.
 # ===========================================================================
-
-_interview_graph = None
+_interview_graph_lock = threading.Lock()
 
 
 def get_interview_graph():
@@ -701,15 +756,14 @@ def get_interview_graph():
     Return the module-level default graph, building it on first call.
 
     Use this instead of importing `_interview_graph` directly so that
-    importing this module never triggers a filesystem/DB side-effect.
-
-    The graph uses the default SqliteSaver checkpointer (checkpoints.db
-    at project root).  For tests, call build_interview_graph(MemorySaver())
-    instead.
+    importing this module never triggers a database connection. Production
+    uses the shared PostgreSQL checkpoint tables; tests can inject MemorySaver.
     """
     global _interview_graph
     if _interview_graph is None:
-        _interview_graph = build_interview_graph()
+        with _interview_graph_lock:
+            if _interview_graph is None:
+                _interview_graph = build_interview_graph()
     return _interview_graph
 
 
@@ -720,8 +774,8 @@ def get_interview_graph():
 # across the codebase (api/interview_router.py etc.) because this proxy
 # forwards every attribute access / call to the lazily-built graph instance.
 #
-# Using a proxy instead of a bare module-level variable means the SqliteSaver
-# connection is not created at import time (safe for tests and CI).
+# Using a proxy instead of a bare module-level graph means importing this module
+# does not initialize PostgreSQL until the application first needs the graph.
 # ---------------------------------------------------------------------------
 
 class _LazyGraphProxy:

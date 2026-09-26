@@ -68,15 +68,11 @@ def _get_snapshot(thread_id: str):
 
 def _rebuild_graph_state_from_db(int_id: int, interview_row: dict, user_id: int) -> bool:
     """
-    After a backend restart MemorySaver loses all checkpoints.
-    If the DB says the interview is still in-progress, we cannot resume
-    the graph mid-session — the checkpoint is gone.  We mark this
-    case as irrecoverable for the in-progress flow and let the caller
-    return a clear error so the user can refresh via GET /interview/{id}
-    which reads from DB directly.
+    Relational interview rows do not contain the complete LangGraph state,
+    so they cannot safely reconstruct a missing checkpoint. The caller can
+    still use GET /interview/{id} to retrieve the latest persisted question.
 
-    Returns False always (we cannot re-inject state into MemorySaver
-    without replaying the entire session from scratch, which is unsafe).
+    Returns False when the graph checkpoint is unavailable.
     """
     return False
 
@@ -240,7 +236,7 @@ def answer_question(
             detail="Invalid interview_id format. Must be a numeric ID.",
         )
 
-    # --- Ownership check via DB (works even after MemorySaver restart) ---
+    # --- Ownership check via durable relational record ---
     interview_row = repo.get_interview(int_id)
     if not interview_row:
         raise HTTPException(
@@ -264,9 +260,8 @@ def answer_question(
     snap = _get_snapshot(interview_id)
 
     if snap is None:
-        # MemorySaver lost the checkpoint (e.g., backend restarted).
-        # The DB still has the interview; the user should use GET /interview/{id}
-        # to retrieve the current question and re-submit.
+        # The relational record may still be available even when the workflow
+        # checkpoint is not. GET /interview/{id} can return the latest question.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(

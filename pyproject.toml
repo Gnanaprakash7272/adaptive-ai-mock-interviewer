@@ -13,4 +13,32 @@ dependencies = [
     "python-multipart>=0.0.32",
     "supabase>=2.31.0",
     "langgraph>=0.2.0",
+    "pyjwt>=2.8.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "requests>=2.34.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# Restrict pytest to the project directory only — prevents F:\ root traversal on Windows.
+# pytest 9.x / Python 3.13 tries to stat parent dirs for symlink detection,
+# which fails with PermissionError on restricted Windows drives (e.g. F:\).
+# Setting rootdir and testpaths to the project directory prevents the issue.
+testpaths = [
+    ".",
+]
+norecursedirs = [
+    ".venv",
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "__pycache__",
+    "scratch_frontend",
+]
+# Disable symlink-based rootdir detection to avoid F:\ stat on Windows
+addopts = "--no-header"

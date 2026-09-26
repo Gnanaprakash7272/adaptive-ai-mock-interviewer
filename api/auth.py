@@ -17,7 +17,13 @@ from api.db import supabase
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # JWT Configuration from environment variables
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "mockora_super_secret_jwt_key_default_32bytes_min")
+# JWT_SECRET_KEY MUST be set in .env — no insecure default allowed.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    raise ValueError(
+        "JWT_SECRET_KEY is not set. "
+        "Add a strong random secret to your .env file before starting the server."
+    )
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 

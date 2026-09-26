@@ -13,44 +13,38 @@ This module has NO dependencies on:
 It uses Python standard library typing only.
 
 The state is a TypedDict — every key must be present in the dict
-passed to the graph. Optional fields may be None at certain stages.
+passed to the graph. Optional fields are declared with total=False
+in the _InterviewStateOptional mixin so callers are not forced to
+supply them at construction time.
 """
 
-from typing import Optional
+from typing import Any, Literal, Optional
+try:
+    # Python 3.11+
+    from typing import TypedDict
+except ImportError:
+    from typing_extensions import TypedDict
 
 
 # =============================================================================
-# InterviewState
+# Nested-structure type aliases
+# (kept as aliases rather than TypedDicts to avoid over-constraining
+#  the AI-function return types, which are validated at runtime)
 # =============================================================================
 
-class InterviewState(dict):
-    """
-    LangGraph graph state for one complete AI MOCKORA interview session.
+QuestionDict       = dict[str, Any]   # {question, topic, difficulty, question_type, expected_concepts}
+EvaluationDict     = dict[str, Any]   # {score, correctness, completeness, technical_depth, …}
+AdaptiveDecisionDict = dict[str, Any] # {next_action, next_topic, difficulty, reason}
+TurnRecord         = dict[str, Any]   # {turn, question, answer, evaluation, adaptive_decision}
+ReportDict         = dict[str, Any]   # {user_id, role, total_questions, overall_score, …}
 
-    Lifecycle:
-        - Created by FastAPI at POST /interview/start
-        - Carried through the LangGraph graph nodes
-        - Persisted between HTTP requests via the LangGraph checkpointer
-        - Tied to a unique Supabase interview row via interview_id
 
-    Field categories:
-        Identity          — who owns this interview and its DB record
-        Candidate Profile — resume-derived data, set once at start
-        Running Context   — topic/difficulty that change each turn
-        Current Turn      — transient per-turn data (cleared each cycle)
-        Progress          — counters and termination flag
-        History           — accumulated turn records for final report
+# =============================================================================
+# Required fields — every graph invocation must supply these
+# =============================================================================
 
-    NOT in state:
-        raw_resume_text   — consumed before the graph starts
-        resume_id         — Supabase concern only
-        report            — produced at END node, not in running state
-    """
-
-    # -------------------------------------------------------------------------
-    # Identity
-    # -------------------------------------------------------------------------
-
+class _InterviewStateRequired(TypedDict):
+    # --- Identity ---
     user_id: int
     """
     Integer user ID from the Supabase users table.
@@ -58,19 +52,8 @@ class InterviewState(dict):
     Used to tie graph state to a real authenticated user.
     """
 
-    interview_id: Optional[int]
-    """
-    Integer primary key of the interviews row in Supabase.
-    Set by the create_interview_plan node after the DB insert.
-    None before that node runs.
-    Used as the LangGraph thread_id: str(interview_id).
-    """
-
-    # -------------------------------------------------------------------------
-    # Candidate Profile
-    # -------------------------------------------------------------------------
-
-    candidate_profile: dict
+    # --- Candidate Profile ---
+    candidate_profile: dict[str, Any]
     """
     Full structured profile returned by analyze_resume().
     Schema mirrors CANDIDATE_PROFILE_SCHEMA in resume_analyzer.py.
@@ -87,86 +70,53 @@ class InterviewState(dict):
     Passed to generate_question() on every turn.
     """
 
-    available_topics: list
+    role_topics: list[str]
     """
-    List of topic strings from candidate_profile["potential_interview_topics"].
-    Extracted at graph start and stored here so decide_next_step()
-    can find uncovered topics without re-reading the full profile.
+    List of topics derived exclusively from the candidate's target role.
+    Populated by create_interview_plan.
     """
 
-    # -------------------------------------------------------------------------
-    # Running Interview Context
-    # -------------------------------------------------------------------------
+    candidate_topics: list[str]
+    """
+    List of topics derived from the candidate's resume/profile that are
+    NOT already in role_topics.
+    Populated by create_interview_plan.
+    """
 
+    available_topics: list[str]
+    """
+    Union of role_topics + profile topics (deduped).
+    Kept for backwards compatibility. Prefer role_topics / candidate_topics
+    for new code.
+    """
+
+    # --- Running Interview Context ---
     current_topic: str
     """
     The topic to use for the NEXT question generation call.
     Updated by the adaptive_decision node after every answer.
-    Initial value set from the first available topic or user choice.
+    Initial value set from the first role topic or user choice.
     """
 
-    current_difficulty: str
+    current_difficulty: Literal["easy", "medium", "hard"]
     """
-    The difficulty level for the NEXT question: "easy", "medium", or "hard".
+    The difficulty level for the NEXT question.
     Updated by the adaptive_decision node after every answer.
     Initial value: "medium" (unless overridden at start).
     """
 
-    topics_covered: list
+    topics_covered: list[str]
     """
     Ordered list of topic strings for which at least one question has
-    been generated. Used by decide_next_step() via _get_next_topic()
-    to avoid repeating exhausted topics.
-    Grows by one entry per generate_question node execution.
+    been generated. Grows by one entry per generate_question execution.
+    Used by decide_next_step() to avoid repeating exhausted topics.
     """
 
-    # -------------------------------------------------------------------------
-    # Current Turn — transient fields, cleared at the start of each cycle
-    # -------------------------------------------------------------------------
-
-    current_question: Optional[dict]
-    """
-    The question dict returned by generate_question() for the current turn.
-    Schema: {question, topic, difficulty, question_type, expected_concepts}
-    Set by the generate_question node.
-    None before the first question is generated or after the interview ends.
-    """
-
-    current_answer: Optional[str]
-    """
-    The raw answer text submitted by the candidate via the React frontend.
-    Injected into graph state by FastAPI when the graph is resumed
-    (after the INTERRUPT in the generate_question node).
-    None until the candidate submits their answer.
-    """
-
-    current_evaluation: Optional[dict]
-    """
-    The evaluation dict returned by evaluate_answer() for the current turn.
-    Schema: {score, correctness, completeness, technical_depth,
-             missing_concepts, confidence, needs_followup, feedback}
-    Set by the evaluate_answer node.
-    None before the first answer is evaluated.
-    """
-
-    adaptive_decision: Optional[dict]
-    """
-    The decision dict returned by decide_next_step() for the current turn.
-    Schema: {next_action, next_topic, difficulty, reason}
-    next_action is one of: follow_up, easier, harder, new_topic
-    Set by the adaptive_decision node.
-    None before the first adaptive decision is made.
-    """
-
-    # -------------------------------------------------------------------------
-    # Progress and Termination
-    # -------------------------------------------------------------------------
-
+    # --- Progress and Termination ---
     question_count: int
     """
     Number of questions generated so far in this interview.
     Incremented by the generate_question node.
-    Compared against max_questions by the should_continue router.
     Initial value: 0
     """
 
@@ -179,25 +129,22 @@ class InterviewState(dict):
 
     is_finished: bool
     """
-    True when the interview has completed (question_count >= max_questions).
-    Set by the adaptive_decision node before routing to generate_final_report.
+    True when the interview has completed.
+    Set by the adaptive_decision node; read by should_continue.
     Initial value: False
     """
 
-    # -------------------------------------------------------------------------
-    # History — accumulated across all turns
-    # -------------------------------------------------------------------------
-
-    interview_history: list
+    # --- History ---
+    interview_history: list[TurnRecord]
     """
-    Ordered list of completed turn records. Each entry is a dict:
+    Ordered list of completed turn records. Each TurnRecord contains:
 
         {
-            "turn":             int,   # 1-indexed turn number
-            "question":         dict,  # the full question dict
-            "answer":           str,   # the candidate's answer text
-            "evaluation":       dict,  # the full evaluation dict
-            "adaptive_decision": dict, # the full adaptive decision dict
+            "turn":              int,   # equals question_count at time of recording
+            "question":          dict,  # the full question dict
+            "answer":            str,   # the candidate's answer text
+            "evaluation":        dict,  # the full evaluation dict
+            "adaptive_decision": dict,  # the full adaptive decision dict
         }
 
     Appended by the adaptive_decision node at the end of each turn.
@@ -205,37 +152,96 @@ class InterviewState(dict):
     Empty list at graph start.
     """
 
-    final_report: Optional[dict]
+
+# =============================================================================
+# Optional fields — absent at construction; set by nodes as the graph runs
+# =============================================================================
+
+class _InterviewStateOptional(TypedDict, total=False):
+    # --- Identity (optional until set by create_interview_plan) ---
+    interview_id: int
+    """
+    Integer primary key of the interviews row in Supabase.
+    Set by the create_interview_plan node after the DB insert.
+    Absent before that node runs.
+    Convert to str when using as LangGraph thread_id: str(interview_id).
+    NOTE: validate this is not None before constructing the thread_id.
+    """
+
+    # --- Current Turn — transient, cleared at the start of each cycle ---
+    current_question: QuestionDict
+    """
+    The question dict returned by generate_question() for the current turn.
+    Schema: {question, topic, difficulty, question_type, expected_concepts}
+    Set by the generate_question node; cleared at the start of the next.
+    """
+
+    current_answer: str
+    """
+    The raw answer text submitted by the candidate via the React frontend.
+    Injected into graph state by FastAPI when the graph is resumed
+    (after the INTERRUPT in the wait_for_answer node).
+    Cleared at the start of each new question cycle.
+    """
+
+    current_evaluation: EvaluationDict
+    """
+    The evaluation dict returned by evaluate_answer() for the current turn.
+    Schema: {score, correctness, completeness, technical_depth,
+             missing_concepts, confidence, needs_followup, feedback}
+    Set by the evaluate_answer node; cleared at the start of the next cycle.
+    """
+
+    adaptive_decision: AdaptiveDecisionDict
+    """
+    The decision dict returned by decide_next_step() for the current turn.
+    Schema: {next_action, next_topic, difficulty, reason}
+    next_action is one of: "follow_up", "easier", "harder", "new_topic"
+    Set by the adaptive_decision node; cleared at the start of the next cycle.
+    """
+
+    # --- Result ---
+    final_report: ReportDict
     """
     The completed interview report dict produced by generate_final_report.
-    None during the running interview.
-    Set when the graph reaches the END node.
+    Absent during the running interview; set when the graph reaches END.
     Contains: user_id, role, total_questions, overall_score,
               topics_covered, adaptive_actions, missing_concepts,
-              feedback_notes, turn_details.
+              feedback_notes, turn_details, strengths, weaknesses,
+              recommendations, summary.
     """
 
 
 # =============================================================================
-# Convenience: all field names for test validation
+# InterviewState — the public type used throughout the graph
 # =============================================================================
 
-INTERVIEW_STATE_FIELDS: tuple = (
-    "user_id",
-    "interview_id",
-    "candidate_profile",
-    "role",
-    "available_topics",
-    "current_topic",
-    "current_difficulty",
-    "topics_covered",
-    "current_question",
-    "current_answer",
-    "current_evaluation",
-    "adaptive_decision",
-    "question_count",
-    "max_questions",
-    "is_finished",
-    "interview_history",
-    "final_report",
+class InterviewState(_InterviewStateRequired, _InterviewStateOptional):
+    """
+    LangGraph graph state for one complete AI MOCKORA interview session.
+
+    Inherits required fields from _InterviewStateRequired and optional
+    (total=False) fields from _InterviewStateOptional.
+
+    Lifecycle:
+        - Created by FastAPI at POST /interview/start
+        - Carried through the LangGraph graph nodes
+        - Persisted between HTTP requests via the LangGraph checkpointer
+        - Tied to a unique Supabase interview row via interview_id
+
+    NOT in state:
+        raw_resume_text   — consumed before the graph starts
+        resume_id         — Supabase concern only
+        report            — produced at END node, not in running state
+    """
+
+
+# =============================================================================
+# Convenience: all field names — derived automatically so they never drift
+# =============================================================================
+
+import typing as _typing
+
+INTERVIEW_STATE_FIELDS: tuple = tuple(
+    _typing.get_type_hints(InterviewState).keys()
 )

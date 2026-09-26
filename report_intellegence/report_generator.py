@@ -1,93 +1,48 @@
 import os
-import json
 import time
 import random
-
-from dotenv import load_dotenv
+import json
 from google import genai
 from google.genai import types
-
-load_dotenv(override=True)
 from gemini_config import get_api_keys, get_model_chain
 
-
-EVALUATION_SCHEMA = {
-    "score": 0,
-    "correctness": 0,
-    "completeness": 0,
-    "technical_depth": 0,
-    "missing_concepts": [],
-    "confidence": 0.0,
-    "needs_followup": False,
-    "feedback": ""
+REPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "strengths": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "weaknesses": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "recommendations": {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+    },
+    "required": [
+        "summary",
+        "strengths",
+        "weaknesses",
+        "recommendations"
+    ]
 }
 
+SYSTEM_PROMPT = f"""
+You are an expert technical interviewer and hiring manager.
+Your task is to review the complete transcript of an AI-led technical interview and generate a final evaluation report.
 
-SYSTEM_PROMPT = """
-You are an expert technical interview evaluator.
+Return a JSON object that perfectly matches the following schema:
+{json.dumps(REPORT_SCHEMA, indent=2)}
 
-Your task is to evaluate a candidate's answer to an interview question.
-
-You will receive:
-1. The interview question
-2. Expected concepts
-3. Candidate's answer
-
-Evaluate ONLY the answer provided.
-
-STRICT RULES:
-
-1. Do not invent information about the candidate.
-2. Judge correctness based on the question and expected concepts.
-3. score, correctness, completeness, and technical_depth
-   must be integers from 0 to 10.
-4. confidence must be a number between 0 and 1.
-5. missing_concepts must contain concepts the candidate failed
-   to explain or explained incorrectly.
-6. needs_followup must be true when the answer lacks enough
-   depth or contains important missing concepts.
-7. feedback must clearly explain what was done well and what
-   should be improved.
-8. Return ONLY valid JSON.
-9. Follow the exact output schema.
+Rules:
+1. The summary should synthesize the overall impression of the candidate based on the calculated overall score and transcript.
+2. Keep feedback constructive and actionable.
+3. List explicit strengths, weaknesses, and recommendations.
 """
-
-
-def build_evaluation_prompt(
-    question: str,
-    expected_concepts: list,
-    candidate_answer: str
-) -> str:
-
-    expected_json = json.dumps(
-        expected_concepts,
-        indent=2,
-        ensure_ascii=False
-    )
-
-    schema_json = json.dumps(
-        EVALUATION_SCHEMA,
-        indent=2
-    )
-
-    return f"""
-Evaluate the following interview answer.
-
-INTERVIEW QUESTION:
-{question}
-
-EXPECTED CONCEPTS:
-{expected_json}
-
-CANDIDATE ANSWER:
-{candidate_answer}
-
-OUTPUT SCHEMA:
-{schema_json}
-
-Return ONLY the JSON object.
-"""
-
 
 def _call_gemini(system_prompt: str, user_prompt: str) -> str:
     api_key_entries = get_api_keys()
@@ -96,7 +51,6 @@ def _call_gemini(system_prompt: str, user_prompt: str) -> str:
         raise RuntimeError("No Gemini API keys found. Set GEMINI_API_KEY in your .env file.")
 
     model_chain = get_model_chain()
-
     max_retries_503 = 3
 
     for model in model_chain:
@@ -113,7 +67,7 @@ def _call_gemini(system_prompt: str, user_prompt: str) -> str:
                         contents=user_prompt,
                         config=types.GenerateContentConfig(
                             system_instruction=system_prompt,
-                            max_output_tokens=1200,
+                            max_output_tokens=3000,
                             response_mime_type="application/json"
                         )
                     )
@@ -148,47 +102,13 @@ def _call_gemini(system_prompt: str, user_prompt: str) -> str:
             continue
     raise RuntimeError("Gemini daily quota exhausted or models unavailable. Please try again later.")
 
-def evaluate_answer(
-    question: str,
-    expected_concepts: list,
-    candidate_answer: str
-) -> dict:
-
-    if not question or not question.strip():
-        raise ValueError(
-            "Question is required."
-        )
-
-    if not candidate_answer or not candidate_answer.strip():
-        raise ValueError(
-            "Candidate answer is required."
-        )
-
-    if not isinstance(expected_concepts, list):
-        raise ValueError(
-            "expected_concepts must be a list."
-        )
-
-    user_prompt = build_evaluation_prompt(
-        question,
-        expected_concepts,
-        candidate_answer
-    )
-
-    raw_response = _call_gemini(
-        SYSTEM_PROMPT,
-        user_prompt
-    )
-
+def generate_narrative(role: str, overall_score: float, topics_covered: list, history: list) -> dict:
+    history_str = json.dumps(history, indent=2)
+    user_prompt = f"Role: {role}\nCalculated Overall Score: {overall_score}\nTopics Covered: {', '.join(topics_covered)}\nInterview History:\n{history_str}"
+    
+    raw_response = _call_gemini(SYSTEM_PROMPT, user_prompt)
+    
     try:
-        evaluation = json.loads(
-            raw_response
-        )
-
+        return json.loads(raw_response)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "Gemini returned invalid JSON.\n"
-            f"Raw response:\n{raw_response}"
-        ) from exc
-
-    return evaluation
+        raise RuntimeError(f"Failed to parse report generator output as JSON: {raw_response}") from exc

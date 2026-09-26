@@ -1,8 +1,8 @@
 import json
 
-from text_extract import extract_text
-from text_clean import clean_resume_text
-from resume_analyzer import analyze_resume
+from resume_intellegence.text_extract import extract_text
+from resume_intellegence.text_clean import clean_resume_text
+from resume_intellegence.resume_analyzer import analyze_resume
 
 
 # ============================================================

@@ -1,15 +1,2 @@
-# ============================================================
-# AI Mock Interview — Python Dependencies
-# ============================================================
-
-# PDF text extraction
-PyMuPDF>=1.28.2
-
-# Google Gemini LLM API (google-genai SDK)
-google-genai>=1.0.0
-
-# Load environment variables from .env file
-python-dotenv>=1.0.0
-
-# LangGraph — AI workflow orchestration layer
-langgraph>=0.2.0
+# This project uses pyproject.toml and uv for dependency management.
+# Please run `uv sync` or `pip install -e .` instead.

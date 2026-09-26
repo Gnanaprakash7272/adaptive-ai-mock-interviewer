@@ -16,9 +16,11 @@ This file ONLY handles:
 """
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 import os
 import json
+from gemini_config import get_api_keys, get_model_chain
+
 
 
 # ============================================================
@@ -215,93 +217,181 @@ Return ONLY the JSON object.
 
 
 # ============================================================
-# 4. CALL GEMINI
+# 4. CALL GEMINI  —  key-rotation + model-fallback
 # ============================================================
+
+# _get_api_keys and _get_model_chain have been moved to gemini_config.py
+
+
+# Error classification helpers
+def _is_quota_error(error_text: str) -> bool:
+    return "429" in error_text or "RESOURCE_EXHAUSTED" in error_text
+
+
+def _is_unavailable_error(error_text: str) -> bool:
+    return "503" in error_text or "UNAVAILABLE" in error_text
+
+
+def _is_auth_error(error_text: str) -> bool:
+    return "401" in error_text or "403" in error_text
+
 
 def _call_gemini(
     system_prompt: str,
     user_prompt: str
 ) -> str:
     """
-    Sends the resume prompt to Gemini
-    and returns the raw JSON response.
+    Sends the prompt to Gemini with a two-dimensional fallback strategy.
+
+    Fallback strategy
+    -----------------
+    Outer loop  → models  (GEMINI_MODEL → GEMINI_MODEL_FALLBACKS)
+    Inner loop  → API keys (GEMINI_API_KEY → GEMINI_API_KEY_2 → …)
+
+    Per cell (model × key):
+      - 429 / RESOURCE_EXHAUSTED  → rotate to the next key for the same model.
+        If all keys are exhausted for this model → advance to the next model.
+      - 503 / UNAVAILABLE         → exponential-backoff retry on the same
+        key/model; after max retries advance to the next model.
+      - 401 / 403                 → hard failure, never treated as quota.
+      - Other errors              → hard failure, never treated as quota.
+
+    Only raises "all keys exhausted" after EVERY key returned a genuine
+    quota-429 for EVERY model in the chain.
     """
 
     import time
+    import random
 
     from google import genai
     from google.genai import types
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-
-    if not api_key:
+    api_key_entries = get_api_keys()
+    if not api_key_entries:
         raise RuntimeError(
-            "GEMINI_API_KEY environment variable is not set."
+            "No Gemini API keys found. "
+            "Set GEMINI_API_KEY in your .env file."
         )
 
-    model = os.environ.get(
-        "GEMINI_MODEL",
-        "gemini-3.6-flash"
+    model_chain = get_model_chain()
+    max_retries_503 = 3
+
+    for model in model_chain:
+
+        all_keys_quota_failed = True  # assume worst; disprove below
+
+        for key_label, api_key in api_key_entries:
+
+            client = genai.Client(api_key=api_key)
+
+            for attempt in range(1, max_retries_503 + 1):
+
+                try:
+                    print(
+                        f"[Gemini] model={model} key={key_label} "
+                        f"attempt={attempt}/{max_retries_503}"
+                    )
+
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            max_output_tokens=8192,
+                            response_mime_type="application/json"
+                        )
+                    )
+
+                    print(
+                        f"[Gemini] SUCCESS model={model} key={key_label}"
+                    )
+                    return response.text
+
+                except Exception as exc:
+
+                    error_text = str(exc)
+
+                    # ── Auth errors: hard stop, never rotate ──────────────
+                    if _is_auth_error(error_text):
+                        raise RuntimeError(
+                            f"[Gemini] AUTH ERROR (401/403) "
+                            f"key={key_label} model={model}. "
+                            f"Check that the API key is valid and has the "
+                            f"Generative Language API enabled. "
+                            f"Detail: {error_text}"
+                        )
+
+                    # ── Quota exhausted: rotate to next key ───────────────
+                    if _is_quota_error(error_text):
+                        keys_left = len(api_key_entries) - (
+                            [k for k, _ in api_key_entries].index(key_label) + 1
+                        )
+                        print(
+                            f"[Gemini] QUOTA_EXHAUSTED "
+                            f"key={key_label} model={model} "
+                            f"keys_remaining_for_model={keys_left}"
+                        )
+                        # This key is truly quota-limited; break to next key
+                        break
+
+                    # ── Service unavailable: backoff, then next model ─────
+                    if _is_unavailable_error(error_text):
+                        if attempt < max_retries_503:
+                            wait = (2 ** attempt) + random.uniform(0, 1)
+                            print(
+                                f"[Gemini] UNAVAILABLE "
+                                f"key={key_label} model={model} "
+                                f"retrying in {wait:.2f}s "
+                                f"(attempt {attempt}/{max_retries_503})"
+                            )
+                            time.sleep(wait)
+                            continue
+                        else:
+                            print(
+                                f"[Gemini] UNAVAILABLE — max retries reached "
+                                f"key={key_label} model={model}. "
+                                f"Advancing to next model."
+                            )
+                            all_keys_quota_failed = False
+                            break  # break attempt loop → break key loop below
+
+                    else:
+                        # ── Unknown/unexpected error ──────────────────────
+                        raise RuntimeError(
+                            f"[Gemini] UNEXPECTED ERROR "
+                            f"key={key_label} model={model}: {error_text}"
+                        )
+
+            else:
+                # attempt loop completed without break → unreachable normally
+                pass
+
+            # If 503 max-retries hit, stop trying more keys for this model
+            if not all_keys_quota_failed:
+                break
+
+        else:
+            # All keys finished their inner loop.
+            # If every key was a quota-429, all_keys_quota_failed stays True.
+            # Otherwise (e.g. 503 broke out) at least one non-quota outcome.
+            pass
+
+        if all_keys_quota_failed:
+            print(
+                f"[Gemini] All {len(api_key_entries)} key(s) quota-exhausted "
+                f"for model={model}. Trying next model in fallback chain..."
+            )
+        # continue outer model loop
+
+    # Every model × every key failed with quota-429
+    raise RuntimeError(
+        "[Gemini] All models and API keys have exhausted their daily quota.\n"
+        "Models tried: " + ", ".join(model_chain) + "\n"
+        "Keys tried:   " + ", ".join(k for k, _ in api_key_entries) + "\n"
+        "To fix: visit https://aistudio.google.com/app/apikey, create a key "
+        "from a NEW Google account/project, and add it as GEMINI_API_KEY_2 "
+        "(or _3, _4 …) in your .env file."
     )
-
-    client = genai.Client(
-        api_key=api_key
-    )
-
-    max_attempts = 4
-
-    for attempt in range(1, max_attempts + 1):
-
-        try:
-            print(
-                f"Gemini request: "
-                f"attempt {attempt}/{max_attempts}"
-            )
-
-            response = client.models.generate_content(
-                model=model,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    max_output_tokens=4000,
-                    response_mime_type="application/json"
-                )
-            )
-
-            return response.text
-
-        except Exception as exc:
-
-            error_text = str(exc)
-
-            temporary_error = (
-                "503" in error_text
-                or "UNAVAILABLE" in error_text
-                or "429" in error_text
-                or "RESOURCE_EXHAUSTED" in error_text
-            )
-
-            if not temporary_error:
-                raise
-
-            if attempt == max_attempts:
-                raise RuntimeError(
-                    "Gemini is temporarily unavailable "
-                    f"after {max_attempts} attempts.\n"
-                    f"Original error: {exc}"
-                ) from exc
-
-            wait_seconds = 2 ** attempt
-
-            print(
-                "Gemini temporarily unavailable."
-            )
-
-            print(
-                f"Retrying in {wait_seconds} seconds..."
-            )
-
-            time.sleep(wait_seconds)
 
 # ============================================================
 # 5. REMOVE MARKDOWN CODE FENCES

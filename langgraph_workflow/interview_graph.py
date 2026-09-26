@@ -17,8 +17,8 @@ Graph Flow:
     adaptive_decision           — calls adaptive_engine, updates topic/difficulty
       ↓
     should_continue (router)
-      ├── "continue"  → generate_question          (loop)
-      └── "finish"    → generate_final_report → END
+        ├── "continue"  → generate_question          (loop)
+        └── "finish"    → generate_final_report → END
 
 Design rules:
     - NO Supabase calls.
@@ -47,11 +47,22 @@ Interrupt/Resume mechanism (LangGraph 1.2.x):
     return value of `interrupt(...)` becomes the candidate's answer string.
 """
 
+from __future__ import annotations
+
+import logging
+import os
+import sqlite3
+
+from dotenv import load_dotenv
+
 from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import interrupt, Command  # noqa: F401 — Command re-exported for callers
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import interrupt
 
 from langgraph_workflow.interview_state import InterviewState
+
+# Load .env before any AI module reads env vars.
+load_dotenv(override=True)
 
 # ---------------------------------------------------------------------------
 # Import existing pure AI functions — zero logic duplication.
@@ -59,6 +70,39 @@ from langgraph_workflow.interview_state import InterviewState
 from question_intellegence.question_generator import generate_question as _generate_question
 from answer_intellegence.answer_evaluator import evaluate_answer as _evaluate_answer
 from adaptive_intellegence.adaptive_engine import decide_next_step as _decide_next_step
+from report_intellegence.report_generator import generate_narrative as _generate_narrative
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Absolute path for the SQLite checkpoint database.
+# Using an absolute path ensures the file lands in the project root
+# regardless of which directory uvicorn / the test runner is started from.
+# ---------------------------------------------------------------------------
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_CHECKPOINTS_DB_PATH = os.path.join(_PROJECT_ROOT, "checkpoints.db")
+
+# ---------------------------------------------------------------------------
+# Module-level constant — role → default topic list.
+# Keys use full, unambiguous phrases to avoid substring collisions
+# (e.g. "ml" would also match "email" or "html").
+# ---------------------------------------------------------------------------
+_ROLE_TOPIC_MAP: dict[str, list[str]] = {
+    "react":            ["React", "JavaScript", "TypeScript", "Frontend Architecture", "State Management"],
+    "machine learning": ["Python", "Machine Learning", "Deep Learning", "Data Processing", "MLOps", "Model Evaluation"],
+    "ml engineer":      ["Python", "Machine Learning", "Deep Learning", "Data Processing", "MLOps", "Model Evaluation"],
+    "backend":          ["API Design", "Databases", "Microservices", "System Architecture", "Security", "Backend Frameworks"],
+    "frontend":         ["JavaScript", "CSS/HTML", "Frontend Frameworks", "Web Performance", "State Management"],
+    "data scientist":   ["SQL", "Data Pipelines", "Data Warehousing", "Python", "Data Modeling"],
+    "data engineer":    ["SQL", "Data Pipelines", "Data Warehousing", "Python", "Data Modeling"],
+    "devops":           ["CI/CD", "Docker", "Kubernetes", "Cloud Platforms", "Infrastructure as Code", "Monitoring"],
+    "full stack":       ["Frontend Frameworks", "Backend Architecture", "Databases", "API Design", "Deployment"],
+    "software":         ["Data Structures", "Algorithms", "System Design", "Problem Solving", "Software Engineering Principles"],
+}
+
+_DEFAULT_TOPICS: list[str] = [
+    "Technical Skills", "System Design", "Problem Solving", "Domain Knowledge", "Best Practices"
+]
 
 
 # ===========================================================================
@@ -70,15 +114,23 @@ def create_interview_plan(state: InterviewState) -> dict:
     Validate and initialise interview session state.
 
     Responsibilities:
-        - Confirm required fields are present (user_id, role, candidate_profile).
-        - Extract available_topics from the candidate profile.
-        - Set the initial topic and difficulty if they were not pre-set.
-        - Reset counters and history accumulators to known-good values.
+        - Confirm required fields are present (user_id, role, candidate_profile,
+          max_questions).
+        - Derive role_topics from the role string via _ROLE_TOPIC_MAP.
+        - Extract candidate_topics from the profile's potential_interview_topics.
+        - Build available_topics as the deduped union (role first, then profile).
+        - Resolve current_topic: keep pre-set if valid, else default to first
+          role topic.
+        - Validate / default current_difficulty.
+        - Reset all per-session accumulators to known-good values.
 
     Does NOT:
         - Call Supabase.
         - Call any AI API.
         - Generate questions.
+
+    Raises:
+        ValueError: if any required field is missing or invalid.
     """
     candidate_profile = state.get("candidate_profile")
     if not candidate_profile or not isinstance(candidate_profile, dict):
@@ -98,48 +150,75 @@ def create_interview_plan(state: InterviewState) -> dict:
             "create_interview_plan: user_id is required."
         )
 
-    # Extract interview topics from the profile.
-    available_topics: list = candidate_profile.get(
-        "potential_interview_topics", []
-    )
-    if not isinstance(available_topics, list):
-        available_topics = []
-
-    # Use the first available topic if none is pre-set.
-    current_topic = state.get("current_topic", "").strip()
-    if not current_topic:
-        if available_topics:
-            current_topic = available_topics[0]
-        else:
-            raise ValueError(
-                "create_interview_plan: no interview topics found in "
-                "candidate_profile and no current_topic was pre-set."
-            )
-
-    # Use "medium" as a sensible default starting difficulty.
-    current_difficulty = state.get("current_difficulty", "medium")
-    if current_difficulty not in ("easy", "medium", "hard"):
-        current_difficulty = "medium"
-
     max_questions = state.get("max_questions")
     if not isinstance(max_questions, int) or max_questions <= 0:
         raise ValueError(
             "create_interview_plan: max_questions must be a positive integer."
         )
 
+    # Resolve role topics — longest matching key wins to avoid short-key
+    # substring collisions (e.g. "ml" inside "email").
+    normalized_role = role.lower()
+    role_topics: list[str] = []
+    best_key_len = 0
+    for key, topics in _ROLE_TOPIC_MAP.items():
+        if key in normalized_role and len(key) > best_key_len:
+            role_topics = list(topics)
+            best_key_len = len(key)
+    if not role_topics:
+        role_topics = list(_DEFAULT_TOPICS)
+
+    # Extract interview topics from the profile.
+    profile_topics: list[str] = candidate_profile.get("potential_interview_topics", [])
+    if not isinstance(profile_topics, list):
+        profile_topics = []
+
+    # candidate_topics = profile topics NOT already in role_topics.
+    role_topics_lower = {t.lower() for t in role_topics}
+    candidate_topics: list[str] = [
+        t for t in profile_topics if t.lower() not in role_topics_lower
+    ]
+
+    # available_topics = deduped union (role first, then profile extras).
+    available_topics: list[str] = list(dict.fromkeys(role_topics + profile_topics))
+
+    # Resolve current_topic.
+    current_topic: str = state.get("current_topic", "").strip()
+    if not current_topic:
+        # No pre-set topic — use first role topic.
+        if role_topics:
+            current_topic = role_topics[0]
+        elif available_topics:
+            current_topic = available_topics[0]
+        else:
+            raise ValueError(
+                "create_interview_plan: no interview topics found in "
+                "candidate_profile and no current_topic was pre-set."
+            )
+    elif current_topic not in available_topics:
+        # Pre-set topic is not in the valid topic pool — reset to first.
+        current_topic = available_topics[0] if available_topics else role_topics[0]
+
+    # Validate / default difficulty.
+    current_difficulty: str = state.get("current_difficulty", "medium")
+    if current_difficulty not in ("easy", "medium", "hard"):
+        current_difficulty = "medium"
+
     return {
-        "available_topics": available_topics,
-        "current_topic": current_topic,
+        "role_topics":        role_topics,
+        "candidate_topics":   candidate_topics,
+        "available_topics":   available_topics,
+        "current_topic":      current_topic,
         "current_difficulty": current_difficulty,
-        "topics_covered": [],
-        "current_question": None,
-        "current_answer": None,
+        "topics_covered":     [],
+        "current_question":   None,
+        "current_answer":     None,
         "current_evaluation": None,
-        "adaptive_decision": None,
-        "question_count": 0,
-        "is_finished": False,
-        "interview_history": [],
-        "final_report": None,
+        "adaptive_decision":  None,
+        "question_count":     0,
+        "is_finished":        False,
+        "interview_history":  [],
+        "final_report":       None,
     }
 
 
@@ -162,41 +241,48 @@ def generate_question(state: InterviewState) -> dict:
 
     Reads:
         candidate_profile, role, current_topic, current_difficulty,
-        topics_covered, question_count
+        topics_covered, question_count, interview_history, adaptive_decision
 
     Writes:
         current_question, topics_covered, question_count,
         current_evaluation (cleared), adaptive_decision (cleared),
         current_answer (cleared)
     """
-    candidate_profile = state["candidate_profile"]
-    role = state["role"]
-    current_topic = state["current_topic"]
+    candidate_profile  = state["candidate_profile"]
+    role               = state["role"]
+    current_topic      = state["current_topic"]
     current_difficulty = state["current_difficulty"]
-    topics_covered: list = list(state.get("topics_covered", []))
-    question_count: int = state.get("question_count", 0)
+    topics_covered: list[str] = list(state.get("topics_covered", []))
+    question_count: int       = state.get("question_count", 0)
+    history: list             = state.get("interview_history", [])
 
-    # Generate question via the existing pure function.
+    # Extract the adaptive action string from the previous turn's decision.
+    adaptive_decision_dict: dict = state.get("adaptive_decision") or {}
+    adaptive_action: str = adaptive_decision_dict.get("next_action", "")
+
     question_data = _generate_question(
         candidate_profile,
         role,
         current_topic,
         current_difficulty,
+        history,
+        adaptive_action,
     )
 
-    # Track the topic.
-    if current_topic not in topics_covered:
+    # Track covered topics (case-insensitive dedup).
+    covered_lower = {t.lower() for t in topics_covered}
+    if current_topic.lower() not in covered_lower:
         topics_covered = topics_covered + [current_topic]
 
     question_count = question_count + 1
 
     return {
-        "current_question": question_data,
-        "topics_covered": topics_covered,
-        "question_count": question_count,
-        "current_answer": None,       # clear answer from prior turn
-        "current_evaluation": None,   # clear stale evaluation from prior turn
-        "adaptive_decision": None,    # clear stale decision from prior turn
+        "current_question":   question_data,
+        "topics_covered":     topics_covered,
+        "question_count":     question_count,
+        "current_answer":     None,    # clear answer from prior turn
+        "current_evaluation": None,    # clear stale evaluation from prior turn
+        "adaptive_decision":  None,    # clear stale decision from prior turn
     }
 
 
@@ -214,26 +300,35 @@ def wait_for_answer(state: InterviewState) -> dict:
 
     When the candidate submits an answer, the caller resumes:
 
+        from langgraph.types import Command
         graph.invoke(Command(resume=<answer_string>), config)
 
     LangGraph replays this node from the interrupt() call, and the return
     value of interrupt(...) becomes the answer string.
 
+    Validates that the resumed answer is non-empty before committing it,
+    to give a clear error rather than a cryptic RuntimeError one node later.
+
     Writes:
         current_answer — the candidate's raw answer text
     """
     current_question = state.get("current_question", {})
-    question_count = state.get("question_count", 0)
+    question_count   = state.get("question_count", 0)
 
-    # interrupt() pauses the graph.  The value returned by interrupt()
-    # on resume is whatever is passed to Command(resume=<value>).
     candidate_answer: str = interrupt(
         {
-            "event": "answer_required",
+            "event":    "answer_required",
             "question": current_question,
-            "turn": question_count,
+            "turn":     question_count,
         }
     )
+
+    # Validate immediately so the error surfaces at the right node.
+    if not str(candidate_answer).strip():
+        raise ValueError(
+            "wait_for_answer: answer cannot be empty. "
+            "Resume with a non-empty string via Command(resume=<answer>)."
+        )
 
     return {
         "current_answer": candidate_answer,
@@ -254,8 +349,11 @@ def evaluate_answer(state: InterviewState) -> dict:
 
     Writes:
         current_evaluation — the full evaluation dict
+
+    Raises:
+        RuntimeError: if current_question or current_answer is missing/empty.
     """
-    question_data = state.get("current_question")
+    question_data    = state.get("current_question")
     candidate_answer = state.get("current_answer")
 
     if not question_data or not isinstance(question_data, dict):
@@ -268,9 +366,8 @@ def evaluate_answer(state: InterviewState) -> dict:
             "evaluate_answer: current_answer is empty."
         )
 
-    question_text: str = question_data.get("question", "")
+    question_text: str      = question_data.get("question", "")
     expected_concepts: list = question_data.get("expected_concepts", [])
-
     if not isinstance(expected_concepts, list):
         expected_concepts = []
 
@@ -286,71 +383,104 @@ def evaluate_answer(state: InterviewState) -> dict:
 
 
 # ===========================================================================
-# NODE 5 — adaptive_decision
+# NODE 5 — run_adaptive_engine
+# (registered in the graph as "adaptive_decision" for route compatibility)
 # ===========================================================================
 
-def adaptive_decision(state: InterviewState) -> dict:
+def run_adaptive_engine(state: InterviewState) -> dict:
     """
     Decide the next topic and difficulty using the existing pure function.
     Append the completed turn to interview_history.
+    Set is_finished if the question limit or early-exit conditions are met.
 
     Reads:
         current_evaluation, current_topic, current_difficulty,
-        topics_covered, available_topics, question_count, max_questions
+        topics_covered, role_topics, candidate_topics, available_topics,
+        question_count, max_questions,
+        current_question, current_answer, interview_history
 
     Writes:
-        adaptive_decision
-        current_topic
-        current_difficulty
-        is_finished
-        interview_history  (appended)
+        adaptive_decision  — the decision dict from decide_next_step
+        current_topic      — updated for the next question
+        current_difficulty — updated for the next question
+        is_finished        — True if interview should end
+        interview_history  — appended with the current turn record
+
+    Raises:
+        RuntimeError: if current_evaluation is missing or not a dict.
     """
-    evaluation = state.get("current_evaluation")
-    current_topic = state["current_topic"]
+    evaluation         = state.get("current_evaluation")
+    current_topic      = state["current_topic"]
     current_difficulty = state["current_difficulty"]
-    topics_covered: list = list(state.get("topics_covered", []))
-    available_topics: list = list(state.get("available_topics", []))
-    question_count: int = state.get("question_count", 0)
-    max_questions: int = state["max_questions"]
+    topics_covered: list[str]   = list(state.get("topics_covered", []))
+    role_topics: list[str]      = list(state.get("role_topics", []))
+    candidate_topics: list[str] = list(state.get("candidate_topics", []))
+    available_topics: list[str] = list(state.get("available_topics", []))
+    question_count: int         = state.get("question_count", 0)
+    max_questions: int          = state["max_questions"]
 
     if not evaluation or not isinstance(evaluation, dict):
         raise RuntimeError(
-            "adaptive_decision: current_evaluation is missing or invalid."
+            "run_adaptive_engine: current_evaluation is missing or invalid."
         )
 
-    # Call the existing pure decision function.
     decision = _decide_next_step(
         evaluation=evaluation,
         current_topic=current_topic,
         current_difficulty=current_difficulty,
         topics_covered=topics_covered,
-        available_topics=available_topics,
+        role_topics=role_topics,
+        candidate_topics=candidate_topics,
     )
 
-    # Determine next topic and difficulty from the decision.
-    next_topic: str = decision.get("next_topic", current_topic)
+    next_topic: str      = decision.get("next_topic", current_topic)
     next_difficulty: str = decision.get("difficulty", current_difficulty)
 
-    # Record this completed turn in interview_history.
+    # Append the completed turn FIRST so the current evaluation is included
+    # in the early-exit score calculations below.
     history: list = list(state.get("interview_history", []))
     turn_record = {
-        "turn": question_count,
-        "question": state.get("current_question"),
-        "answer": state.get("current_answer"),
-        "evaluation": evaluation,
+        "turn":              question_count,
+        "question":          state.get("current_question"),
+        "answer":            state.get("current_answer"),
+        "evaluation":        evaluation,
         "adaptive_decision": decision,
     }
     history = history + [turn_record]
 
-    # Mark finished if question limit has been reached.
+    # Primary termination: question count limit reached.
     is_finished: bool = question_count >= max_questions
 
+    # Adaptive early-termination (requires at least 5 completed turns).
+    if not is_finished and question_count >= 5:
+        scores    = [t.get("evaluation", {}).get("score", 0) for t in history]
+        avg_score = sum(scores) / len(scores) if scores else 0
+
+        # Early success: all available topics covered AND candidate scoring well.
+        covered_lower   = {t.strip().lower() for t in topics_covered}
+        available_lower = {t.strip().lower() for t in available_topics}
+        covered_all     = covered_lower >= available_lower
+
+        if covered_all and avg_score >= 7.5:
+            is_finished = True
+            logger.info(
+                "Adaptive early finish: all topics covered, avg_score=%.1f", avg_score
+            )
+
+        # Early exit: candidate consistently struggling.
+        elif avg_score < 3.0:
+            is_finished = True
+            logger.info(
+                "Adaptive early finish: low avg_score=%.1f after %d questions",
+                avg_score, question_count,
+            )
+
     return {
-        "adaptive_decision": decision,
-        "current_topic": next_topic,
+        "adaptive_decision":  decision,
+        "current_topic":      next_topic,
         "current_difficulty": next_difficulty,
-        "interview_history": history,
-        "is_finished": is_finished,
+        "interview_history":  history,
+        "is_finished":        is_finished,
     }
 
 
@@ -362,76 +492,101 @@ def generate_final_report(state: InterviewState) -> dict:
     """
     Summarise the completed interview from interview_history.
 
-    For Step 2, the report is an in-memory dict only.
-    No Supabase writes.  No Gemini calls.
+    Produces a report dict stored in state under "final_report".
 
-    The report dict is stored in state under the key "final_report"
-    (part of InterviewState as of Step 1 revision).
+    Uses:
+        - state["topics_covered"]  — the actual tracked list (single source of truth)
+          rather than re-deriving from history question dicts, which may differ
+          if the AI returns a different topic string.
+        - interview_history        — for scores, feedback, missing_concepts, actions.
+
+    Note:
+        is_finished is NOT re-set here — it was already set True by
+        run_adaptive_engine (or should_continue routing logic).
+        Setting it again here would be a double-write with no effect,
+        but is removed for clarity.
     """
-    history: list = state.get("interview_history", [])
-    role: str = state.get("role", "")
-    user_id = state.get("user_id")
+    history: list       = state.get("interview_history", [])
+    role: str           = state.get("role", "")
+    user_id             = state.get("user_id")
     question_count: int = state.get("question_count", 0)
 
-    # Aggregate scores across turns.
+    # Use the canonical topics_covered list from state — single source of truth.
+    # This is the list maintained by generate_question (case-deduped).
+    topics_covered: list[str] = list(state.get("topics_covered", []))
+
+    # Aggregate scores.
     scores = [
         turn.get("evaluation", {}).get("score", 0)
         for turn in history
         if turn.get("evaluation")
     ]
-    overall_score: float = (
-        round(sum(scores) / len(scores), 2) if scores else 0.0
-    )
+    overall_score: float = round(sum(scores) / len(scores), 2) if scores else 0.0
 
-    # Collect all feedback strings.
-    feedback_notes = [
+    # Collect feedback strings.
+    feedback_notes: list[str] = [
         turn.get("evaluation", {}).get("feedback", "")
         for turn in history
         if turn.get("evaluation", {}).get("feedback")
     ]
 
-    # Collect missing concepts across all turns.
-    all_missing: list = []
+    # Collect and deduplicate missing concepts.
+    all_missing: list[str] = []
     for turn in history:
         missing = turn.get("evaluation", {}).get("missing_concepts", [])
         if isinstance(missing, list):
             all_missing.extend(missing)
-    # Deduplicate while preserving order.
-    seen: set = set()
-    unique_missing: list = []
+    seen: set[str] = set()
+    unique_missing: list[str] = []
     for concept in all_missing:
         key = str(concept).strip().lower()
         if key and key not in seen:
             seen.add(key)
             unique_missing.append(concept)
 
-    # Collect topics and adaptive actions for summary.
-    topics_interviewed = [
-        turn.get("question", {}).get("topic", "")
-        for turn in history
-        if turn.get("question", {}).get("topic")
-    ]
-    adaptive_actions = [
+    # Collect adaptive actions from history.
+    adaptive_actions: list[str] = [
         turn.get("adaptive_decision", {}).get("next_action", "")
         for turn in history
         if turn.get("adaptive_decision", {}).get("next_action")
     ]
 
+    # Generate narrative via AI (with graceful fallback).
+    try:
+        narrative = _generate_narrative(
+            role=role,
+            overall_score=overall_score,
+            topics_covered=topics_covered,
+            history=history,
+        )
+    except Exception:
+        logger.warning("Narrative generation failed", exc_info=True)
+        narrative = {
+            "strengths":       ["Completed the interview session."],
+            "weaknesses":      ["Could not generate weaknesses due to service error."],
+            "recommendations": ["Review the questions asked."],
+            "summary":         "The candidate completed the interview, but narrative generation failed.",
+        }
+
     report = {
-        "user_id": user_id,
-        "role": role,
-        "total_questions": question_count,
-        "overall_score": overall_score,
-        "topics_covered": topics_interviewed,
+        "user_id":          user_id,
+        "role":             role,
+        "total_questions":  question_count,
+        "overall_score":    overall_score,
+        "topics_covered":   topics_covered,          # from state, not re-derived
         "adaptive_actions": adaptive_actions,
         "missing_concepts": unique_missing,
-        "feedback_notes": feedback_notes,
-        "turn_details": history,
+        "feedback_notes":   feedback_notes,
+        "turn_details":     history,
+        "strengths":        narrative.get("strengths", []),
+        "weaknesses":       narrative.get("weaknesses", []),
+        "recommendations":  narrative.get("recommendations", []),
+        "summary":          narrative.get("summary", ""),
     }
 
     return {
         "final_report": report,
-        "is_finished": True,
+        # is_finished is already True from run_adaptive_engine — not re-set here.
     }
 
 
@@ -441,25 +596,15 @@ def generate_final_report(state: InterviewState) -> dict:
 
 def should_continue(state: InterviewState) -> str:
     """
-    Route after adaptive_decision:
+    Route after run_adaptive_engine:
 
         "finish"   → generate_final_report
         "continue" → generate_question  (loop)
 
-    Termination conditions (either is sufficient):
-        1. question_count >= max_questions
-        2. is_finished is already True (set by adaptive_decision)
+    Single source of truth: is_finished (set by run_adaptive_engine).
+    The router is intentionally thin — all business logic lives in the node.
     """
-    if state.get("is_finished", False):
-        return "finish"
-
-    question_count: int = state.get("question_count", 0)
-    max_questions: int = state.get("max_questions", 0)
-
-    if question_count >= max_questions:
-        return "finish"
-
-    return "continue"
+    return "finish" if state.get("is_finished", False) else "continue"
 
 
 # ===========================================================================
@@ -472,8 +617,11 @@ def build_interview_graph(checkpointer=None):
 
     Args:
         checkpointer: A LangGraph checkpointer instance.
-                      Defaults to MemorySaver() for in-process use.
-                      Pass a custom checkpointer for production.
+                      Defaults to a SqliteSaver bound to an absolute path
+                      ``checkpoints.db`` at the project root, regardless of
+                      the process working directory.
+                      Pass a custom checkpointer (e.g. MemorySaver) for tests
+                      or when you manage the connection lifecycle yourself.
 
     Returns:
         A compiled LangGraph CompiledStateGraph ready for invoke/stream.
@@ -482,18 +630,25 @@ def build_interview_graph(checkpointer=None):
         graph = build_interview_graph()
         config = {"configurable": {"thread_id": "interview-42"}}
 
-        # Start: runs plan + generate_question + wait_for_answer, then pauses.
+        # Start: runs plan → generate_question → wait_for_answer, then pauses.
         graph.invoke(initial_state, config)
 
         # Read the committed question from state.
         question = graph.get_state(config).values["current_question"]
 
-        # Resume with candidate's answer.
+        # Resume with the candidate's answer.
         from langgraph.types import Command
         graph.invoke(Command(resume="My answer text"), config)
+
+    Note:
+        For production, create the SQLite connection in your application
+        lifespan handler and pass the resulting checkpointer here so the
+        connection is properly closed on shutdown.
     """
     if checkpointer is None:
-        checkpointer = MemorySaver()
+        conn = sqlite3.connect(_CHECKPOINTS_DB_PATH, check_same_thread=False)
+        checkpointer = SqliteSaver(conn)
+        checkpointer.setup()
 
     builder = StateGraph(InterviewState)
 
@@ -504,18 +659,17 @@ def build_interview_graph(checkpointer=None):
     builder.add_node("generate_question",     generate_question)
     builder.add_node("wait_for_answer",       wait_for_answer)
     builder.add_node("evaluate_answer",       evaluate_answer)
-    builder.add_node("adaptive_decision",     adaptive_decision)
+    builder.add_node("adaptive_decision",     run_adaptive_engine)   # node name kept for graph compat
     builder.add_node("generate_final_report", generate_final_report)
 
     # ------------------------------------------------------------------
     # Edges — linear flow
     # ------------------------------------------------------------------
-    builder.add_edge(START,                    "create_interview_plan")
-    builder.add_edge("create_interview_plan",  "generate_question")
-    builder.add_edge("generate_question",      "wait_for_answer")
-    # wait_for_answer → evaluate_answer  (after interrupt/resume)
-    builder.add_edge("wait_for_answer",        "evaluate_answer")
-    builder.add_edge("evaluate_answer",        "adaptive_decision")
+    builder.add_edge(START,                   "create_interview_plan")
+    builder.add_edge("create_interview_plan", "generate_question")
+    builder.add_edge("generate_question",     "wait_for_answer")
+    builder.add_edge("wait_for_answer",       "evaluate_answer")
+    builder.add_edge("evaluate_answer",       "adaptive_decision")
 
     # ------------------------------------------------------------------
     # Conditional edge — loop or finish
@@ -531,15 +685,56 @@ def build_interview_graph(checkpointer=None):
 
     builder.add_edge("generate_final_report", END)
 
-    # ------------------------------------------------------------------
-    # Compile
-    # ------------------------------------------------------------------
     return builder.compile(checkpointer=checkpointer)
 
 
 # ===========================================================================
-# Module-level default graph instance
-# (used by tests and the future FastAPI router)
+# Lazy module-level graph accessor
+# (avoids crashing on import in test/CI environments without checkpoints.db)
 # ===========================================================================
 
-interview_graph = build_interview_graph()
+_interview_graph = None
+
+
+def get_interview_graph():
+    """
+    Return the module-level default graph, building it on first call.
+
+    Use this instead of importing `_interview_graph` directly so that
+    importing this module never triggers a filesystem/DB side-effect.
+
+    The graph uses the default SqliteSaver checkpointer (checkpoints.db
+    at project root).  For tests, call build_interview_graph(MemorySaver())
+    instead.
+    """
+    global _interview_graph
+    if _interview_graph is None:
+        _interview_graph = build_interview_graph()
+    return _interview_graph
+
+
+# ---------------------------------------------------------------------------
+# Public lazy proxy — maintains backwards compatibility.
+#
+# `from langgraph_workflow.interview_graph import interview_graph` works
+# across the codebase (api/interview_router.py etc.) because this proxy
+# forwards every attribute access / call to the lazily-built graph instance.
+#
+# Using a proxy instead of a bare module-level variable means the SqliteSaver
+# connection is not created at import time (safe for tests and CI).
+# ---------------------------------------------------------------------------
+
+class _LazyGraphProxy:
+    """Forwards all attribute access to the lazily-initialised interview graph."""
+
+    __slots__ = ()   # no instance dict — all attrs delegate to the real graph
+
+    def __getattr__(self, name: str):
+        return getattr(get_interview_graph(), name)
+
+    def __call__(self, *args, **kwargs):
+        return get_interview_graph()(*args, **kwargs)
+
+
+interview_graph = _LazyGraphProxy()
+

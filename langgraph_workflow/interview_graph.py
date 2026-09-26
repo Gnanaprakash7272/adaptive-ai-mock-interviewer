@@ -110,11 +110,11 @@ _DEFAULT_TOPICS: list[str] = [
 
 
 def _create_checkpoint_pool(database_url: str) -> ConnectionPool:
-    """Create a bounded pool suitable for a warm serverless function instance."""
+    """Create the small runtime pool used by PostgresSaver on warm instances."""
     return ConnectionPool(
         conninfo=database_url,
         min_size=0,
-        max_size=1,
+        max_size=2,
         kwargs={
             "autocommit": True,
             "row_factory": dict_row,
@@ -126,9 +126,16 @@ def _create_checkpoint_pool(database_url: str) -> ConnectionPool:
     )
 
 
-def _initialize_checkpoint_schema(pool: ConnectionPool) -> None:
-    """Apply PostgresSaver migrations once per process under a database lock."""
-    with pool.connection() as connection:
+def _initialize_checkpoint_schema(database_url: str) -> None:
+    """Run checkpoint migrations on a dedicated connection."""
+    from psycopg import connect
+
+    with connect(
+        database_url,
+        autocommit=True,
+        row_factory=dict_row,
+        prepare_threshold=0,
+    ) as connection:
         with connection.transaction():
             connection.execute(
                 "SELECT pg_advisory_xact_lock(%s)",
@@ -149,16 +156,22 @@ def _get_postgres_checkpointer() -> PostgresSaver:
             return _postgres_checkpointer
 
         database_url = os.getenv("DATABASE_URL", "").strip()
+
         if not database_url:
             raise RuntimeError(
                 "DATABASE_URL is required for LangGraph PostgreSQL checkpointing. "
                 "Set it to the Supabase PostgreSQL session-pooler connection string."
             )
 
+        # Run schema setup using a dedicated PostgreSQL connection.
+        # Do not consume a connection from the runtime pool while
+        # initializing that same pool.
+        _initialize_checkpoint_schema(database_url)
+
         pool = _create_checkpoint_pool(database_url)
+
         try:
             pool.open(wait=True, timeout=10)
-            _initialize_checkpoint_schema(pool)
             checkpointer = PostgresSaver(pool)
         except Exception:
             pool.close()
@@ -166,6 +179,7 @@ def _get_postgres_checkpointer() -> PostgresSaver:
 
         _checkpoint_pool = pool
         _postgres_checkpointer = checkpointer
+
         return checkpointer
 
 

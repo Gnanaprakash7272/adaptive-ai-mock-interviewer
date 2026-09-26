@@ -86,7 +86,7 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
 
         options = pool_factory.call_args.kwargs
         self.assertEqual(options["min_size"], 0)
-        self.assertEqual(options["max_size"], 1)
+        self.assertEqual(options["max_size"], 2)
         self.assertFalse(options["open"])
         self.assertEqual(options["kwargs"]["autocommit"], True)
         self.assertIs(options["kwargs"]["row_factory"], graph_module.dict_row)
@@ -111,17 +111,26 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
         self.assertIs(second_result, saver)
         create_pool.assert_called_once_with("postgresql://test")
         pool.open.assert_called_once_with(wait=True, timeout=10)
-        initialize_schema.assert_called_once_with(pool)
+        initialize_schema.assert_called_once_with("postgresql://test")
         saver_factory.assert_called_once_with(pool)
 
     def test_schema_setup_uses_transaction_advisory_lock(self):
-        pool = MagicMock()
-        connection = pool.connection.return_value.__enter__.return_value
+        connection = MagicMock()
         checkpointer = MagicMock()
 
-        with patch.object(graph_module, "PostgresSaver", return_value=checkpointer) as saver_type:
-            graph_module._initialize_checkpoint_schema(pool)
+        with (
+            patch("psycopg.connect") as mock_connect,
+            patch.object(graph_module, "PostgresSaver", return_value=checkpointer) as saver_type,
+        ):
+            mock_connect.return_value.__enter__.return_value = connection
+            graph_module._initialize_checkpoint_schema("postgresql://test")
 
+        mock_connect.assert_called_once_with(
+            "postgresql://test",
+            autocommit=True,
+            row_factory=graph_module.dict_row,
+            prepare_threshold=0,
+        )
         connection.execute.assert_called_once_with(
             "SELECT pg_advisory_xact_lock(%s)",
             (graph_module._CHECKPOINT_SETUP_LOCK_ID,),
@@ -149,14 +158,11 @@ class TestPostgresCheckpointPersistence(unittest.TestCase):
         return os.environ["LANGGRAPH_TEST_DATABASE_URL"].strip()
 
     def _new_store(self):
-        pool = graph_module._create_checkpoint_pool(self._test_database_url())
+        database_url = self._test_database_url()
+        graph_module._initialize_checkpoint_schema(database_url)
+        pool = graph_module._create_checkpoint_pool(database_url)
         pool.open(wait=True, timeout=10)
-        try:
-            graph_module._initialize_checkpoint_schema(pool)
-            return pool, PostgresSaver(pool)
-        except Exception:
-            pool.close()
-            raise
+        return pool, PostgresSaver(pool)
 
     def _unique_interview_id(self) -> int:
         return 9_000_000_000_000_000 + (uuid4().int % 1_000_000_000_000_000)
@@ -258,16 +264,11 @@ class TestPostgresCheckpointPersistence(unittest.TestCase):
     def test_concurrent_instances_serialize_checkpoint_migrations(self):
         database_url = self._test_database_url()
 
-        def initialize_from_independent_pool() -> None:
-            pool = graph_module._create_checkpoint_pool(database_url)
-            try:
-                pool.open(wait=True, timeout=10)
-                graph_module._initialize_checkpoint_schema(pool)
-            finally:
-                pool.close()
+        def initialize_from_independent_connection() -> None:
+            graph_module._initialize_checkpoint_schema(database_url)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [executor.submit(initialize_from_independent_pool) for _ in range(2)]
+            futures = [executor.submit(initialize_from_independent_connection) for _ in range(2)]
             for future in futures:
                 future.result(timeout=30)
 

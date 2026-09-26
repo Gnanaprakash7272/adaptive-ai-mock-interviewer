@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User, Resume, UserRoleTarget } from '../types';
-import { apiService, getAccessToken, clearAccessToken } from '../services/apiService';
+import {
+  apiService,
+  getAccessToken,
+  clearAccessToken,
+  AUTH_INVALIDATED_EVENT,
+} from '../services/apiService';
 
 
 interface AuthContextType {
@@ -57,6 +62,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const handleAuthInvalidated = () => setUser(null);
+    window.addEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
+    return () => window.removeEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
   }, []);
 
   const login = async (email: string, pass: string) => {

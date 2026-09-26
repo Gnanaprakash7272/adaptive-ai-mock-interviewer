@@ -21,6 +21,7 @@ import type {
 
 const TOKEN_KEY = 'ai_mockora_access_token';
 const API_BASE_URL_KEY = 'ai_mockora_api_url';
+export const AUTH_INVALIDATED_EVENT = 'ai_mockora_auth_invalidated';
 
 export const getApiBaseUrl = (): string => {
   if (import.meta.env.PROD) return '';
@@ -56,6 +57,11 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
   }
 
   const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    clearAccessToken();
+    window.dispatchEvent(new Event(AUTH_INVALIDATED_EVENT));
+  }
   
   if (!response.ok) {
     let errorDetail = response.statusText;

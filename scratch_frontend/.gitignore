@@ -1,0 +1,36 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Frontend dependencies and build output
+scratch_frontend/node_modules/
+scratch_frontend/dist/
+
+# Frontend local environment files
+scratch_frontend/.env.local
+scratch_frontend/*.local
+
+# Nested frontend Git metadata
+scratch_frontend/.git
+scratch_frontend/.git_backup

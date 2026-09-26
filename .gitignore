@@ -5,12 +5,28 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage/
 
 # Virtual environments
-.venv
+.venv/
 
-# Secrets — never commit
+# Frontend dependencies and local build output
+node_modules/
+dist-ssr/
+.vercel/
+
+# Local environment files — keep safe examples trackable
 .env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local state and logs
+*.log
+.DS_Store
 
 # Runtime SQLite state (contains live user session data)
 checkpoints.db*

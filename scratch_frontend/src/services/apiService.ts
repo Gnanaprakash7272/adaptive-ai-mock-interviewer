@@ -123,7 +123,10 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/auth/forgot-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email }),
     });
     if (!response.ok) {
@@ -141,7 +144,10 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/auth/verify-reset-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email, otp }),
     });
     if (!response.ok) {
@@ -159,7 +165,10 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/auth/reset-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email, reset_token, new_password }),
     });
     if (!response.ok) {

@@ -85,6 +85,10 @@ class TestInterviewStateFields(unittest.TestCase):
         "max_questions",
         "is_finished",
         "interview_history",
+        "interview_brief",
+        "followups_on_current_topic",
+        "max_followups_per_topic",
+        "interviewer_feedback",
         "final_report",
     )
 
@@ -105,11 +109,11 @@ class TestInterviewStateFields(unittest.TestCase):
         self.assertEqual(extra, [], f"Unexpected extra fields: {extra}")
 
     def test_total_field_count(self):
-        """INTERVIEW_STATE_FIELDS must contain exactly 19 entries."""
+        """INTERVIEW_STATE_FIELDS must contain exactly 23 entries."""
         fields = self._get_fields()
         self.assertEqual(
-            len(fields), 19,
-            f"Expected 19 fields, got {len(fields)}: {fields}",
+            len(fields), 23,
+            f"Expected 23 fields, got {len(fields)}: {fields}",
         )
 
     def test_identity_fields_present(self):

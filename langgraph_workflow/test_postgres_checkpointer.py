@@ -130,7 +130,7 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
         initialize_schema.assert_called_once_with("postgresql://test")
         saver_factory.assert_called_once_with(pool)
 
-    def test_schema_setup_uses_transaction_advisory_lock(self):
+    def test_schema_setup_uses_session_advisory_lock(self):
         connection = MagicMock()
         checkpointer = MagicMock()
 
@@ -147,13 +147,21 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
             row_factory=graph_module.dict_row,
             prepare_threshold=0,
         )
-        connection.execute.assert_called_once_with(
-            "SELECT pg_advisory_xact_lock(%s)",
+        connection.execute.assert_any_call(
+            "SELECT pg_advisory_lock(%s)",
             (graph_module._CHECKPOINT_SETUP_LOCK_ID,),
         )
-        connection.transaction.assert_called_once_with()
+        connection.execute.assert_any_call(
+            "SELECT pg_advisory_unlock(%s)",
+            (graph_module._CHECKPOINT_SETUP_LOCK_ID,),
+        )
         saver_type.assert_called_once_with(connection)
         checkpointer.setup.assert_called_once_with()
+
+    def test_database_url_sanitizes_brackets_and_encodes_password(self):
+        raw = "postgresql://postgres.project[pass@#123]@pooler.supabase.com:5432/postgres"
+        expected = "postgresql://postgres.project:pass%40%23123@pooler.supabase.com:5432/postgres"
+        self.assertEqual(graph_module._sanitize_database_url(raw), expected)
 
     def test_graph_construction_keeps_explicit_test_checkpointer(self):
         from langgraph.checkpoint.memory import MemorySaver

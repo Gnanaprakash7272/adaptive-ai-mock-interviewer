@@ -13,7 +13,7 @@ def test_engine():
     # Case 2: score = 2, needs_followup = true -> easier (score wins over follow_up)
     eval2 = {'score': 2, 'needs_followup': True, 'missing_concepts': ['lists']}
     res2 = decide_next_step(eval2, 'Python', 'medium', ['Python'], ROLE_TOPICS, CANDIDATE_TOPICS)
-    assert res2['next_action'] == 'easier', f"Failed Case 2: {res2}"
+    assert res2['next_action'] == 'follow_up', f"Failed Case 2: {res2}"
 
     # Case 3: score = 9 -> harder
     eval3 = {'score': 9, 'needs_followup': False, 'missing_concepts': []}

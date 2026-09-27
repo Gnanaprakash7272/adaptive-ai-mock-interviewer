@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sun, Moon, Search, Bell, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck } from 'lucide-react';
+import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -13,16 +13,7 @@ export const Navbar: React.FC = () => {
   const { addToast } = useToast();
   const navigate = useNavigate();
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/roles?search=${encodeURIComponent(searchQuery)}`);
-    }
-  };
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 dark:border-border-dark bg-white/90 dark:bg-surface-dark/90 backdrop-blur-md transition-colors duration-200">
@@ -34,19 +25,7 @@ export const Navbar: React.FC = () => {
           </Link>
         </div>
 
-        {/* Center: Search Bar (When logged in) */}
-        {user && (
-          <form onSubmit={handleSearchSubmit} className="hidden md:flex flex-1 max-w-md relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search engineering roles, skills, or questions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-slate-100/80 dark:bg-surface-dark-elevated border border-slate-200/80 dark:border-white/10 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50 transition-all"
-            />
-          </form>
-        )}
+        <div className="flex-1"></div>
 
         {/* Right Action Icons & User Dropdown */}
         <div className="flex items-center gap-2 sm:gap-4">
@@ -66,50 +45,6 @@ export const Navbar: React.FC = () => {
 
           {user ? (
             <>
-              {/* Notification Popover */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-surface-dark-elevated dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-white/10 transition-colors relative"
-                >
-                  <Bell className="w-4 h-4" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-500 ring-2 ring-white dark:ring-surface-dark" />
-                </button>
-
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white dark:bg-surface-dark-card border border-slate-200 dark:border-border-dark shadow-2xl p-4 z-50">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5 mb-3">
-                      <h4 className="font-bold text-xs text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-                        Notifications
-                      </h4>
-                      <span className="text-[10px] bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300 px-2 py-0.5 rounded-full font-semibold">
-                        2 New
-                      </span>
-                    </div>
-
-                    <div className="space-y-2.5 text-xs">
-                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-100 dark:border-white/5">
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">
-                          Resume Parsing Complete
-                        </p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          Extracted 12 technical skills with 96% match for ML Engineer.
-                        </p>
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-100 dark:border-white/5">
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">
-                          Mock Interview Complete
-                        </p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          Open your report to review AI feedback.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* User Profile Menu */}
               <div className="relative">
                 <button

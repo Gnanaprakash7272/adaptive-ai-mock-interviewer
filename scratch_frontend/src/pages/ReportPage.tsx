@@ -96,10 +96,35 @@ export const ReportPage: React.FC = () => {
   // UI mapping logic: map available backend fields, omit unsupported ones without inventing values.
   // topicPerformance variable removed as it was unused
   
-  const strengthsList = finalReport.strengths || [];
-  const knowledgeGapsList = finalReport.weaknesses || [];
+  const ensureArray = (val: any): string[] => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        // ignore
+      }
+      return [val];
+    }
+    return [];
+  };
+
+  const profileStrengths = ensureArray(finalReport.profile_strengths);
+  
+  let demonstratedStrengths = ensureArray(finalReport.interview_demonstrated_strengths);
+  if (demonstratedStrengths.length === 0) {
+    demonstratedStrengths = ensureArray(finalReport.strengths);
+  }
+
+  let knowledgeGaps = ensureArray(finalReport.interview_knowledge_gaps);
+  if (knowledgeGaps.length === 0) {
+    knowledgeGaps = ensureArray(finalReport.weaknesses);
+  }
+
   const interviewSummaryText = finalReport.summary || 'No summary available.';
-  const recommendationsList = finalReport.recommendations || [];
+  const recommendationsList = ensureArray(finalReport.recommendations);
+  const topicsCovered = ensureArray(finalReport.topics_covered);
 
   return (
     <PageWrapper className="space-y-8 max-w-5xl">
@@ -165,13 +190,13 @@ export const ReportPage: React.FC = () => {
             </p>
 
             <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
-              {(finalReport.topics_covered || []).map((topic, idx) => (
+              {topicsCovered.map((topic, idx) => (
                 <li key={idx} className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
                   {topic}
                 </li>
               ))}
-              {(!finalReport.topics_covered || finalReport.topics_covered.length === 0) && (
+              {topicsCovered.length === 0 && (
                 <li className="text-slate-500">No topics recorded.</li>
               )}
             </ul>
@@ -187,16 +212,17 @@ export const ReportPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* STRENGTHS & KNOWLEDGE GAPS (Matching Exact Prompt Format) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Strengths */}
+      {/* STRENGTHS & KNOWLEDGE GAPS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Profile Strengths */}
         <Card className="p-6 space-y-4">
           <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
             <Award className="w-4 h-4 text-emerald-500" />
-            Strengths
+            Profile Strengths
           </h3>
           <ul className="space-y-2.5 text-xs">
-            {strengthsList.map((item, idx) => (
+            {profileStrengths.map((item, idx) => (
               <li
                 key={idx}
                 className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200 font-medium leading-relaxed"
@@ -204,6 +230,30 @@ export const ReportPage: React.FC = () => {
                 <span>{item}</span>
               </li>
             ))}
+            {profileStrengths.length === 0 && (
+               <li className="text-slate-500">No profile strengths recorded.</li>
+            )}
+          </ul>
+        </Card>
+
+        {/* Demonstrated Strengths */}
+        <Card className="p-6 space-y-4">
+          <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-brand-500" />
+            Demonstrated Strengths
+          </h3>
+          <ul className="space-y-2.5 text-xs">
+            {demonstratedStrengths.map((item, idx) => (
+              <li
+                key={idx}
+                className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 text-blue-900 dark:text-blue-200 font-medium leading-relaxed"
+              >
+                <span>{item}</span>
+              </li>
+            ))}
+            {demonstratedStrengths.length === 0 && (
+               <li className="text-slate-500">No demonstrated strengths recorded.</li>
+            )}
           </ul>
         </Card>
 
@@ -214,7 +264,7 @@ export const ReportPage: React.FC = () => {
             Knowledge Gaps
           </h3>
           <ul className="space-y-2.5 text-xs">
-            {knowledgeGapsList.map((item, idx) => (
+            {knowledgeGaps.map((item, idx) => (
               <li
                 key={idx}
                 className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 font-medium leading-relaxed"
@@ -222,6 +272,9 @@ export const ReportPage: React.FC = () => {
                 <span>{item}</span>
               </li>
             ))}
+            {knowledgeGaps.length === 0 && (
+               <li className="text-slate-500">No knowledge gaps recorded.</li>
+            )}
           </ul>
         </Card>
       </div>

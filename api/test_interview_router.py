@@ -169,6 +169,27 @@ class TestAuthenticationGate(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 401)
 
+    def test_01b_expired_jwt_rejected(self):
+        """Expired JWT token must return 401."""
+        from datetime import timedelta
+        from api.auth import create_access_token
+        expired_token = create_access_token({"user_id": FAKE_USER_ID, "email": FAKE_EMAIL}, expires_delta=timedelta(seconds=-1))
+        resp = self.client.post(
+            "/interview/start",
+            headers={"Authorization": f"Bearer {expired_token}"},
+            json={"role": "Backend Engineer", "max_questions": 3},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_01c_invalid_jwt_rejected(self):
+        """Malformed or completely invalid JWT token must return 401."""
+        resp = self.client.post(
+            "/interview/start",
+            headers={"Authorization": "Bearer this.is.an.invalid.token.string"},
+            json={"role": "Backend Engineer", "max_questions": 3},
+        )
+        self.assertEqual(resp.status_code, 401)
+
 
 # ===========================================================================
 # TEST CLASS 2 — Start interview
@@ -214,8 +235,9 @@ class TestStartInterview(unittest.TestCase):
         """The 'question' object must contain all required keys."""
         resp = self._start()
         q = resp.json()["question"]
-        for key in ("question", "topic", "difficulty", "question_type", "expected_concepts"):
+        for key in ("question", "topic", "difficulty", "question_type"):
             self.assertIn(key, q)
+        self.assertNotIn("expected_concepts", q)
 
     def test_03c_start_missing_profile_rejected(self):
         """Missing candidate profile (e.g., resume not uploaded) must return 404."""
@@ -352,6 +374,10 @@ class TestAnswerEndpoint(unittest.TestCase):
             q = body.get("question", {})
             for key in ("question", "topic", "difficulty"):
                 self.assertIn(key, q)
+            self.assertNotIn("expected_concepts", q)
+            self.assertIn("interviewer_feedback", body)
+            self.assertNotIn("expected_concepts", q)
+            self.assertIn("interviewer_feedback", body)
 
     def test_08_empty_answer_rejected(self):
         """Empty string answer must return 422 (Pydantic) or 400."""
@@ -371,6 +397,9 @@ class TestAnswerEndpoint(unittest.TestCase):
         report = body["final_report"]
         for key in ("overall_score", "strengths", "weaknesses", "recommendations", "summary", "topics_covered"):
             self.assertIn(key, report)
+        self.assertIn("profile_strengths", report)
+        self.assertIn("interview_demonstrated_strengths", report)
+        self.assertIn("interview_knowledge_gaps", report)
 
     def test_09b_final_report_score_is_numeric(self):
         """final_report.overall_score must be a number."""
@@ -378,6 +407,31 @@ class TestAnswerEndpoint(unittest.TestCase):
         body = self._answer(iid, "My answer.").json()
         score = body["final_report"].get("overall_score")
         self.assertIsInstance(score, (int, float))
+
+    def test_09c_invalid_interview_id_returns_404(self):
+        """Using a completely non-existent interview ID returns 404."""
+        self.mocks["get_interview"][1].return_value = None
+        resp = self.client.post(
+            "/interview/999999/answer",
+            headers=_auth_header(),
+            json={"answer": "Testing invalid ID"}
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("not found", resp.json().get("detail", "").lower())
+
+    def test_09d_duplicate_answer_gracefully_handled(self):
+        """Submitting an answer when the interview is already completed gracefully returns the state."""
+        iid = self._start_interview(max_q=1)
+        
+        # Answer #1 -> completes the interview
+        resp1 = self._answer(iid, "My first answer.")
+        self.assertEqual(resp1.status_code, 200)
+        self.assertEqual(resp1.json().get("status"), "completed")
+
+        # Answer #2 (Duplicate/Extra) -> Should return 400 because interview is completed
+        resp2 = self._answer(iid, "I want to add more.")
+        self.assertEqual(resp2.status_code, 400)
+        self.assertIn("already completed", resp2.json().get("detail", "").lower())
 
 
 # ===========================================================================

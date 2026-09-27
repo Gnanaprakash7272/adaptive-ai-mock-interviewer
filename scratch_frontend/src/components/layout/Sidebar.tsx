@@ -4,12 +4,9 @@ import {
   LayoutDashboard,
   Target,
   History,
-  PlayCircle,
-  Sparkles,
   UserCheck,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useAuth } from '../../context/AuthContext';
 
 interface NavItem {
   label: string;
@@ -19,8 +16,6 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { user } = useAuth();
-
   const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Candidate Profile', path: '/profile', icon: UserCheck },
@@ -67,31 +62,6 @@ export const Sidebar: React.FC = () => {
           })}
         </div>
 
-        {/* Quick Launch Card Banner at Bottom */}
-        {user && (
-          <div className="mt-auto pt-6">
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-700 text-white shadow-lg relative overflow-hidden group">
-              <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10 blur-md group-hover:scale-125 transition-transform" />
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-200 mb-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                Quick Mock
-              </div>
-              <h4 className="text-xs font-bold leading-snug text-white">
-                Practice {(user.targetRole ?? 'Interview').split(' ')[0]} Now
-              </h4>
-              <p className="text-[10px] text-brand-100 mt-1 opacity-90">
-                5 AI questions • 30 mins
-              </p>
-              <NavLink
-                to="/roles"
-                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-brand-700 font-bold text-xs shadow hover:bg-brand-50 transition-colors"
-              >
-                <PlayCircle className="w-3.5 h-3.5" />
-                Start Session
-              </NavLink>
-            </div>
-          </div>
-        )}
       </aside>
 
       {/* Mobile Bottom Navigation Bar */}

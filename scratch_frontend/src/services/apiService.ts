@@ -119,6 +119,60 @@ export const apiService = {
     return result;
   },
 
+  async forgotPassword(email: string): Promise<any> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!response.ok) {
+      let errorDetail = 'Could not send verification code';
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) errorDetail = errorData.detail;
+      } catch {}
+      throw new Error(errorDetail);
+    }
+    return response.json();
+  },
+
+  async verifyOTP(email: string, otp: string): Promise<any> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}/auth/verify-reset-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    if (!response.ok) {
+      let errorDetail = 'Invalid or expired OTP';
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) errorDetail = errorData.detail;
+      } catch {}
+      throw new Error(errorDetail);
+    }
+    return response.json();
+  },
+
+  async resetPassword(email: string, reset_token: string, new_password: string): Promise<any> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, reset_token, new_password }),
+    });
+    if (!response.ok) {
+      let errorDetail = 'Could not reset password';
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) errorDetail = errorData.detail;
+      } catch {}
+      throw new Error(errorDetail);
+    }
+    return response.json();
+  },
+
   /**
    * @deprecated Frontend reads user from JWT in AuthContext.
    */
@@ -224,26 +278,33 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     try {
       const response = await fetchWithAuth(`${baseUrl}/roles/recommend`);
-      const data = await response.json() as Array<Role & { reason: string; matchedSkills: string[]; skillGaps: string[] }>;
+      const data = await response.json();
       // Map flat backend response to RecommendedRole shape
-      return data.map(item => ({
+      return data.map((item: any) => ({
         role: {
           id: item.id,
           title: item.title,
+          category: item.category,
           department: item.department,
           difficulty: item.difficulty,
           matchScore: item.matchScore,
           description: item.description,
-          requiredSkills: item.requiredSkills,
+          requiredSkills: item.requiredSkills || [],
+          preferredSkills: item.preferredSkills || [],
+          relatedSkills: item.relatedSkills || [],
           estimatedTimeMinutes: item.estimatedTimeMinutes,
           questionCount: item.questionCount,
           iconName: item.iconName,
           featured: item.featured,
         },
         reason: item.reason,
-        matchedSkills: item.matchedSkills,
-        skillGaps: item.skillGaps,
+        matchedSkills: item.matchedSkills || [],
+        skillGaps: item.skillGaps || [],
         matchScore: item.matchScore,
+        requiredSkillMatch: item.requiredSkillMatch,
+        preferredSkillMatch: item.preferredSkillMatch,
+        projectEvidence: item.projectEvidence || [],
+        experienceEvidence: item.experienceEvidence || [],
       }));
     } catch {
       return [];

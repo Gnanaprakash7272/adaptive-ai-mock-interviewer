@@ -78,15 +78,29 @@ export type RoleDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Junior' | 'Mid-Level'
 export interface Role {
   id: string;
   title: string;
+  category?: string;
   department: string;
   difficulty: RoleDifficulty;
   matchScore: number; // percentage based on uploaded resume
   description: string;
   requiredSkills: string[];
+  preferredSkills?: string[];
+  relatedSkills?: string[];
   estimatedTimeMinutes: number;
   questionCount: number;
   iconName: string;
   featured?: boolean;
+}
+
+export interface SkillEvidence {
+  skill: string;
+  project?: string;
+  company?: string;
+}
+
+export interface SkillGroupMatch {
+  matched: number;
+  total: number;
 }
 
 export interface RecommendedRole {
@@ -95,7 +109,12 @@ export interface RecommendedRole {
   matchedSkills: string[];
   skillGaps: string[];
   matchScore: number;
+  requiredSkillMatch?: SkillGroupMatch;
+  preferredSkillMatch?: SkillGroupMatch;
+  projectEvidence?: SkillEvidence[];
+  experienceEvidence?: SkillEvidence[];
 }
+
 
 export type AIPersonaType = 'Supportive' | 'Strict' | 'Deep-Dive Technical' | 'FAANG Recruiter';
 
@@ -121,7 +140,6 @@ export interface BackendQuestion {
   topic: string;
   difficulty: string;
   question_type: string;
-  expected_concepts: string[];
 }
 
 export interface StartInterviewResponse {
@@ -144,6 +162,9 @@ export interface BackendFinalReport {
   recommendations: string[];
   summary: string;
   topics_covered: string[];
+  profile_strengths?: string[];
+  interview_demonstrated_strengths?: string[];
+  interview_knowledge_gaps?: string[];
 }
 
 export interface SubmitAnswerResponse {
@@ -153,6 +174,7 @@ export interface SubmitAnswerResponse {
   question?: BackendQuestion;
   question_number?: number;
   max_questions?: number;
+  interviewer_feedback?: string;
   final_report?: BackendFinalReport;
 }
 

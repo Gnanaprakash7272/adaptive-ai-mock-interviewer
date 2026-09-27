@@ -230,10 +230,12 @@ class TestCreateInterviewPlan(unittest.TestCase):
         return create_interview_plan(state)
 
     def test_03_plan_sets_role_topics(self):
-        """create_interview_plan must derive role_topics from the role string."""
+        """create_interview_plan must derive role_topics from the role catalogue."""
         result = self._run_plan_node(make_initial_state())
-        # "Python Backend Developer" contains "backend" → "API Design" in role_topics
-        self.assertIn("API Design", result["role_topics"])
+        # "Python Backend Developer" matches catalogue "Backend Developer"
+        self.assertIn("Python", result["role_topics"])
+        self.assertIn("FastAPI", result["role_topics"])
+        self.assertNotIn("Technical Skills", result["role_topics"])
 
     def test_03a_plan_sets_available_topics_includes_profile(self):
         """available_topics must include profile topics not in role_topics."""
@@ -246,8 +248,8 @@ class TestCreateInterviewPlan(unittest.TestCase):
     def test_03b_plan_sets_first_topic_from_role(self):
         """create_interview_plan must set current_topic to the first role topic."""
         result = self._run_plan_node(make_initial_state())
-        # First role topic for "backend" is "API Design"
-        self.assertEqual(result["current_topic"], "API Design")
+        self.assertEqual(result["current_topic"], result["role_topics"][0])
+        self.assertEqual(result["current_topic"], "Python")
 
     def test_03c_plan_resets_counters(self):
         """create_interview_plan must reset question_count and interview_history."""
@@ -277,6 +279,35 @@ class TestCreateInterviewPlan(unittest.TestCase):
         self.assertIn(result["current_topic"], result["available_topics"])
 
     def test_03g_plan_returns_final_report_none(self):
+        """create_interview_plan must include final_report: None in return dict."""
+        result = self._run_plan_node(make_initial_state())
+        self.assertIn("final_report", result)
+        self.assertIsNone(result["final_report"])
+
+    def test_03h_plan_builds_sanitized_brief(self):
+        """Interview brief must exclude PII and include role-grounded skills."""
+        result = self._run_plan_node(make_initial_state())
+        brief = result["interview_brief"]
+        dumped = str(brief)
+        self.assertNotIn("test@example.com", dumped)
+        self.assertIn("Python", brief["required_skills"])
+        self.assertEqual(brief["source"], "catalogue")
+
+    def test_03i_ai_engineer_uses_catalogue_topics(self):
+        result = self._run_plan_node(make_initial_state(role="AI Engineer"))
+        self.assertIn("LangChain", result["role_topics"])
+        self.assertIn("Python", result["role_topics"])
+        self.assertNotIn("Technical Skills", result["role_topics"])
+
+    def test_03j_ml_engineer_uses_catalogue_topics(self):
+        result = self._run_plan_node(make_initial_state(role="Machine Learning Engineer"))
+        self.assertIn("Machine Learning", result["role_topics"])
+        self.assertIn("Python", result["role_topics"])
+
+    def test_03k_unknown_role_falls_back(self):
+        result = self._run_plan_node(make_initial_state(role="Wizard Coder 999"))
+        self.assertEqual(result["interview_brief"]["source"], "fallback")
+        self.assertIn("Technical Skills", result["role_topics"])
         """create_interview_plan must include final_report: None in return dict."""
         result = self._run_plan_node(make_initial_state())
         self.assertIn("final_report", result)
@@ -364,10 +395,10 @@ class TestInterrupt(unittest.TestCase):
         self.assertEqual(cq["question"], FAKE_QUESTION["question"])
 
     def test_05d_topics_covered_has_first_topic(self, mock_q):
-        """topics_covered must include the current_topic after Q1 is generated."""
+        """topics_covered must stay empty until the answer is evaluated."""
         graph, config = self._build_and_invoke(mock_q)
         topics = graph.get_state(config).values.get("topics_covered", [])
-        self.assertTrue(len(topics) > 0, "topics_covered must not be empty after Q1.")
+        self.assertEqual(topics, [])
 
 
 # ===========================================================================
@@ -544,6 +575,8 @@ class TestTerminationAndFinalReport(unittest.TestCase):
             "topics_covered", "adaptive_actions", "missing_concepts",
             "feedback_notes", "turn_details",
             "strengths", "weaknesses", "recommendations", "summary",
+            "profile_strengths", "interview_demonstrated_strengths",
+            "interview_knowledge_gaps",
         ):
             self.assertIn(key, report, f"final_report is missing key: '{key}'.")
 
@@ -744,6 +777,7 @@ class TestEvaluateAnswerNode(unittest.TestCase):
         })
         self.assertIn("current_evaluation", result)
         self.assertEqual(result["current_evaluation"]["score"], 8)
+        self.assertTrue(result["interviewer_feedback"])
 
     @patch(
         "langgraph_workflow.interview_graph._evaluate_answer",
@@ -855,6 +889,25 @@ class TestAdaptiveEngineNode(unittest.TestCase):
         result = self._run_node(state)
         self.assertTrue(result["is_finished"],
                         "Expected early finish when all topics covered and avg_score=8.0.")
+
+    def test_adaptive_does_not_cover_topic_after_weak_answer(self):
+        result = self._run_node(self._base_state(
+            current_evaluation=FAKE_EVALUATION_LOW,
+            topics_covered=[],
+            question_count=1,
+            max_questions=10,
+        ))
+        self.assertNotIn("FastAPI", result["topics_covered"])
+        self.assertEqual(result["adaptive_decision"]["next_action"], "follow_up")
+
+    def test_adaptive_covers_topic_after_strong_answer(self):
+        result = self._run_node(self._base_state(
+            current_evaluation=FAKE_EVALUATION,
+            topics_covered=[],
+            question_count=1,
+            max_questions=10,
+        ))
+        self.assertIn("FastAPI", result["topics_covered"])
 
     def test_adaptive_no_early_exit_below_5_turns(self):
         """

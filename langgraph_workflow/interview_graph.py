@@ -51,7 +51,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
+import urllib.parse
 
 from dotenv import load_dotenv
 
@@ -73,6 +75,11 @@ from question_intellegence.question_generator import generate_question as _gener
 from answer_intellegence.answer_evaluator import evaluate_answer as _evaluate_answer
 from adaptive_intellegence.adaptive_engine import decide_next_step as _decide_next_step
 from report_intellegence.report_generator import generate_narrative as _generate_narrative
+from langgraph_workflow.interview_brief import (
+    build_interview_brief,
+    max_followups_per_topic,
+    plan_interview_topics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,27 +93,37 @@ _checkpoint_pool: ConnectionPool | None = None
 _postgres_checkpointer: PostgresSaver | None = None
 _interview_graph = None
 
-# ---------------------------------------------------------------------------
-# Module-level constant — role → default topic list.
-# Keys use full, unambiguous phrases to avoid substring collisions
-# (e.g. "ml" would also match "email" or "html").
-# ---------------------------------------------------------------------------
-_ROLE_TOPIC_MAP: dict[str, list[str]] = {
-    "react":            ["React", "JavaScript", "TypeScript", "Frontend Architecture", "State Management"],
-    "machine learning": ["Python", "Machine Learning", "Deep Learning", "Data Processing", "MLOps", "Model Evaluation"],
-    "ml engineer":      ["Python", "Machine Learning", "Deep Learning", "Data Processing", "MLOps", "Model Evaluation"],
-    "backend":          ["API Design", "Databases", "Microservices", "System Architecture", "Security", "Backend Frameworks"],
-    "frontend":         ["JavaScript", "CSS/HTML", "Frontend Frameworks", "Web Performance", "State Management"],
-    "data scientist":   ["SQL", "Data Pipelines", "Data Warehousing", "Python", "Data Modeling"],
-    "data engineer":    ["SQL", "Data Pipelines", "Data Warehousing", "Python", "Data Modeling"],
-    "devops":           ["CI/CD", "Docker", "Kubernetes", "Cloud Platforms", "Infrastructure as Code", "Monitoring"],
-    "full stack":       ["Frontend Frameworks", "Backend Architecture", "Databases", "API Design", "Deployment"],
-    "software":         ["Data Structures", "Algorithms", "System Design", "Problem Solving", "Software Engineering Principles"],
-}
+TOPIC_MASTERY_SCORE = 7
 
-_DEFAULT_TOPICS: list[str] = [
-    "Technical Skills", "System Design", "Problem Solving", "Domain Knowledge", "Best Practices"
-]
+
+def _sanitize_database_url(database_url: str) -> str:
+    """
+    Sanitize and normalize common copy-paste artifacts from Supabase dashboard.
+
+    Fixes:
+    - Leading/trailing whitespace, outer quotes, 'DATABASE_URL=' prefixes
+    - Accidental bracketed passwords: user[pass] or user:[pass] -> user:pass
+    - Unencoded special characters in the password (@, #, %, etc.)
+    """
+    if not database_url:
+        return ""
+    database_url = database_url.strip()
+    if database_url.startswith("DATABASE_URL="):
+        database_url = database_url[len("DATABASE_URL="):].strip()
+    if (database_url.startswith('"') and database_url.endswith('"')) or (
+        database_url.startswith("'") and database_url.endswith("'")
+    ):
+        database_url = database_url[1:-1].strip()
+
+    # Match bracketed password e.g. postgresql://user[pass]@host... or postgresql://user:[pass]@host...
+    match = re.match(r"^(postgres(?:ql)?://)([^@:]+)(?::\[|\[)([^\]]+)\](@.*)$", database_url)
+    if match:
+        prefix, user, password, rest = match.groups()
+        unquoted_pw = urllib.parse.unquote(password)
+        safe_pw = urllib.parse.quote(unquoted_pw, safe="")
+        database_url = f"{prefix}{user}:{safe_pw}{rest}"
+
+    return database_url
 
 
 def _create_checkpoint_pool(database_url: str) -> ConnectionPool:
@@ -136,15 +153,23 @@ def _initialize_checkpoint_schema(database_url: str) -> None:
         row_factory=dict_row,
         prepare_threshold=0,
     ) as connection:
-        with connection.transaction():
+        # Use session-level advisory lock instead of transaction lock, because
+        # PostgresSaver.setup() executes DDL like "CREATE INDEX CONCURRENTLY"
+        # which PostgreSQL prohibits inside an active transaction block.
+        connection.execute(
+            "SELECT pg_advisory_lock(%s)",
+            (_CHECKPOINT_SETUP_LOCK_ID,),
+        )
+        try:
+            PostgresSaver(connection).setup()
+        finally:
             connection.execute(
-                "SELECT pg_advisory_xact_lock(%s)",
+                "SELECT pg_advisory_unlock(%s)",
                 (_CHECKPOINT_SETUP_LOCK_ID,),
             )
-            PostgresSaver(connection).setup()
 
 
-def _get_postgres_checkpointer() -> PostgresSaver:
+def _get_postgres_checkpointer():
     """Return the process-wide PostgresSaver, initializing its pool once."""
     global _checkpoint_pool, _postgres_checkpointer
 
@@ -155,40 +180,48 @@ def _get_postgres_checkpointer() -> PostgresSaver:
         if _postgres_checkpointer is not None:
             return _postgres_checkpointer
 
-        database_url = os.getenv("DATABASE_URL", "").strip()
-
-        # Defensively sanitize accidental key-prefix or quotes from copy-pasting in UI dashboards
-        if database_url.startswith("DATABASE_URL="):
-            database_url = database_url[len("DATABASE_URL="):].strip()
-        if (database_url.startswith('"') and database_url.endswith('"')) or (
-            database_url.startswith("'") and database_url.endswith("'")
-        ):
-            database_url = database_url[1:-1].strip()
+        database_url = _sanitize_database_url(os.getenv("DATABASE_URL", ""))
 
         if not database_url:
+            if os.getenv("ALLOW_MEMORY_CHECKPOINTER", "").lower() in ("true", "1", "yes"):
+                logger.warning(
+                    "DATABASE_URL not set. Falling back to MemorySaver because ALLOW_MEMORY_CHECKPOINTER=true."
+                )
+                from langgraph.checkpoint.memory import MemorySaver
+                _postgres_checkpointer = MemorySaver()
+                return _postgres_checkpointer
+
             raise RuntimeError(
                 "DATABASE_URL is required for LangGraph PostgreSQL checkpointing. "
                 "Set it to the Supabase PostgreSQL session-pooler connection string."
             )
 
-        # Run schema setup using a dedicated PostgreSQL connection.
-        # Do not consume a connection from the runtime pool while
-        # initializing that same pool.
-        _initialize_checkpoint_schema(database_url)
-
-        pool = _create_checkpoint_pool(database_url)
-
+        pool = None
         try:
+            # Run schema setup using a dedicated PostgreSQL connection.
+            # Do not consume a connection from the runtime pool while
+            # initializing that same pool.
+            _initialize_checkpoint_schema(database_url)
+
+            pool = _create_checkpoint_pool(database_url)
             pool.open(wait=True, timeout=10)
             checkpointer = PostgresSaver(pool)
-        except Exception:
-            pool.close()
+            _checkpoint_pool = pool
+            _postgres_checkpointer = checkpointer
+            return checkpointer
+        except Exception as exc:
+            if pool is not None:
+                pool.close()
+            if os.getenv("ALLOW_MEMORY_CHECKPOINTER", "").lower() in ("true", "1", "yes"):
+                logger.warning(
+                    "PostgreSQL checkpointer connection failed (%s). "
+                    "ALLOW_MEMORY_CHECKPOINTER=true: falling back to MemorySaver.",
+                    exc,
+                )
+                from langgraph.checkpoint.memory import MemorySaver
+                _postgres_checkpointer = MemorySaver()
+                return _postgres_checkpointer
             raise
-
-        _checkpoint_pool = pool
-        _postgres_checkpointer = checkpointer
-
-        return checkpointer
 
 
 # ===========================================================================
@@ -202,9 +235,8 @@ def create_interview_plan(state: InterviewState) -> dict:
     Responsibilities:
         - Confirm required fields are present (user_id, role, candidate_profile,
           max_questions).
-        - Derive role_topics from the role string via _ROLE_TOPIC_MAP.
-        - Extract candidate_topics from the profile's potential_interview_topics.
-        - Build available_topics as the deduped union (role first, then profile).
+        - Build a sanitized interview brief from the role catalogue (or fallback).
+        - Derive role_topics from role requirements, gaps, and candidate evidence.
         - Resolve current_topic: keep pre-set if valid, else default to first
           role topic.
         - Validate / default current_difficulty.
@@ -242,31 +274,11 @@ def create_interview_plan(state: InterviewState) -> dict:
             "create_interview_plan: max_questions must be a positive integer."
         )
 
-    # Resolve role topics — longest matching key wins to avoid short-key
-    # substring collisions (e.g. "ml" inside "email").
-    normalized_role = role.lower()
-    role_topics: list[str] = []
-    best_key_len = 0
-    for key, topics in _ROLE_TOPIC_MAP.items():
-        if key in normalized_role and len(key) > best_key_len:
-            role_topics = list(topics)
-            best_key_len = len(key)
-    if not role_topics:
-        role_topics = list(_DEFAULT_TOPICS)
-
-    # Extract interview topics from the profile.
-    profile_topics: list[str] = candidate_profile.get("potential_interview_topics", [])
-    if not isinstance(profile_topics, list):
-        profile_topics = []
-
-    # candidate_topics = profile topics NOT already in role_topics.
-    role_topics_lower = {t.lower() for t in role_topics}
-    candidate_topics: list[str] = [
-        t for t in profile_topics if t.lower() not in role_topics_lower
-    ]
-
-    # available_topics = deduped union (role first, then profile extras).
-    available_topics: list[str] = list(dict.fromkeys(role_topics + profile_topics))
+    interview_brief = build_interview_brief(role, candidate_profile)
+    role_topics, candidate_topics, available_topics = plan_interview_topics(
+        interview_brief,
+        candidate_profile,
+    )
 
     # Resolve current_topic.
     current_topic: str = state.get("current_topic", "").strip()
@@ -291,20 +303,24 @@ def create_interview_plan(state: InterviewState) -> dict:
         current_difficulty = "medium"
 
     return {
-        "role_topics":        role_topics,
-        "candidate_topics":   candidate_topics,
-        "available_topics":   available_topics,
-        "current_topic":      current_topic,
-        "current_difficulty": current_difficulty,
-        "topics_covered":     [],
-        "current_question":   None,
-        "current_answer":     None,
-        "current_evaluation": None,
-        "adaptive_decision":  None,
-        "question_count":     0,
-        "is_finished":        False,
-        "interview_history":  [],
-        "final_report":       None,
+        "role_topics":                 role_topics,
+        "candidate_topics":            candidate_topics,
+        "available_topics":            available_topics,
+        "interview_brief":             interview_brief,
+        "current_topic":               current_topic,
+        "current_difficulty":          current_difficulty,
+        "topics_covered":              [],
+        "followups_on_current_topic":  0,
+        "max_followups_per_topic":     max_followups_per_topic(),
+        "current_question":            None,
+        "current_answer":              None,
+        "current_evaluation":          None,
+        "interviewer_feedback":        "",
+        "adaptive_decision":           None,
+        "question_count":              0,
+        "is_finished":                 False,
+        "interview_history":           [],
+        "final_report":                None,
     }
 
 
@@ -338,9 +354,9 @@ def generate_question(state: InterviewState) -> dict:
     role               = state["role"]
     current_topic      = state["current_topic"]
     current_difficulty = state["current_difficulty"]
-    topics_covered: list[str] = list(state.get("topics_covered", []))
     question_count: int       = state.get("question_count", 0)
     history: list             = state.get("interview_history", [])
+    interview_brief: dict     = state.get("interview_brief") or {}
 
     # Extract the adaptive action string from the previous turn's decision.
     adaptive_decision_dict: dict = state.get("adaptive_decision") or {}
@@ -353,22 +369,17 @@ def generate_question(state: InterviewState) -> dict:
         current_difficulty,
         history,
         adaptive_action,
+        interview_brief=interview_brief,
     )
-
-    # Track covered topics (case-insensitive dedup).
-    covered_lower = {t.lower() for t in topics_covered}
-    if current_topic.lower() not in covered_lower:
-        topics_covered = topics_covered + [current_topic]
 
     question_count = question_count + 1
 
     return {
         "current_question":   question_data,
-        "topics_covered":     topics_covered,
         "question_count":     question_count,
-        "current_answer":     None,    # clear answer from prior turn
-        "current_evaluation": None,    # clear stale evaluation from prior turn
-        "adaptive_decision":  None,    # clear stale decision from prior turn
+        "current_answer":     None,
+        "current_evaluation": None,
+        "adaptive_decision":  None,
     }
 
 
@@ -401,10 +412,12 @@ def wait_for_answer(state: InterviewState) -> dict:
     current_question = state.get("current_question", {})
     question_count   = state.get("question_count", 0)
 
+    public_question = dict(current_question or {})
+    public_question.pop("expected_concepts", None)
     candidate_answer: str = interrupt(
         {
             "event":    "answer_required",
-            "question": current_question,
+            "question": public_question,
             "turn":     question_count,
         }
     )
@@ -461,10 +474,17 @@ def evaluate_answer(state: InterviewState) -> dict:
         question_text,
         expected_concepts,
         candidate_answer,
+        role=state.get("role", ""),
+        difficulty=state.get("current_difficulty", "medium"),
+        recent_turns=state.get("interview_history") or [],
+        interview_brief=state.get("interview_brief"),
     )
+
+    feedback = str(evaluation.get("feedback") or "").strip()
 
     return {
         "current_evaluation": evaluation,
+        "interviewer_feedback": feedback,
     }
 
 
@@ -504,6 +524,12 @@ def run_adaptive_engine(state: InterviewState) -> dict:
     available_topics: list[str] = list(state.get("available_topics", []))
     question_count: int         = state.get("question_count", 0)
     max_questions: int          = state["max_questions"]
+    followups_on_topic: int     = int(state.get("followups_on_current_topic") or 0)
+    max_followups: int          = int(state.get("max_followups_per_topic") or max_followups_per_topic())
+    history: list               = list(state.get("interview_history", []))
+    previous_action = ""
+    if history:
+        previous_action = (history[-1].get("adaptive_decision") or {}).get("next_action", "")
 
     if not evaluation or not isinstance(evaluation, dict):
         raise RuntimeError(
@@ -517,14 +543,33 @@ def run_adaptive_engine(state: InterviewState) -> dict:
         topics_covered=topics_covered,
         role_topics=role_topics,
         candidate_topics=candidate_topics,
+        followups_on_topic=followups_on_topic,
+        max_followups=max_followups,
+        previous_action=previous_action,
     )
 
     next_topic: str      = decision.get("next_topic", current_topic)
     next_difficulty: str = decision.get("difficulty", current_difficulty)
+    next_action: str     = decision.get("next_action", "")
+    followups_before = followups_on_topic
 
-    # Append the completed turn FIRST so the current evaluation is included
-    # in the early-exit score calculations below.
-    history: list = list(state.get("interview_history", []))
+    if next_action == "follow_up":
+        followups_on_topic = followups_on_topic + 1
+    elif next_topic.strip().lower() != current_topic.strip().lower():
+        followups_on_topic = 0
+
+    score = evaluation.get("score", 0)
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        score = 0.0
+
+    covered_lower = {t.lower() for t in topics_covered}
+    topic_key = current_topic.strip().lower()
+    cycle_complete = followups_before > 0 and next_action != "follow_up"
+    if topic_key not in covered_lower:
+        if score >= TOPIC_MASTERY_SCORE or cycle_complete:
+            topics_covered = topics_covered + [current_topic]
     turn_record = {
         "turn":              question_count,
         "question":          state.get("current_question"),
@@ -562,11 +607,13 @@ def run_adaptive_engine(state: InterviewState) -> dict:
             )
 
     return {
-        "adaptive_decision":  decision,
-        "current_topic":      next_topic,
-        "current_difficulty": next_difficulty,
-        "interview_history":  history,
-        "is_finished":        is_finished,
+        "adaptive_decision":           decision,
+        "current_topic":               next_topic,
+        "current_difficulty":          next_difficulty,
+        "topics_covered":              topics_covered,
+        "followups_on_current_topic":  followups_on_topic,
+        "interview_history":           history,
+        "is_finished":                 is_finished,
     }
 
 
@@ -598,8 +645,8 @@ def generate_final_report(state: InterviewState) -> dict:
     question_count: int = state.get("question_count", 0)
 
     # Use the canonical topics_covered list from state — single source of truth.
-    # This is the list maintained by generate_question (case-deduped).
     topics_covered: list[str] = list(state.get("topics_covered", []))
+    interview_brief: dict = state.get("interview_brief") or {}
 
     # Aggregate scores.
     scores = [
@@ -630,6 +677,36 @@ def generate_final_report(state: InterviewState) -> dict:
             seen.add(key)
             unique_missing.append(concept)
 
+    profile_strengths = list(interview_brief.get("matched_skills") or [])
+    interview_demonstrated: list[str] = []
+    demonstrated_seen: set[str] = set()
+    for turn in history:
+        eval_data = turn.get("evaluation") or {}
+        try:
+            turn_score = float(eval_data.get("score") or 0)
+        except (TypeError, ValueError):
+            turn_score = 0.0
+        if turn_score < TOPIC_MASTERY_SCORE:
+            continue
+        topic = (turn.get("question") or {}).get("topic") or ""
+        key = str(topic).strip().lower()
+        if key and key not in demonstrated_seen:
+            demonstrated_seen.add(key)
+            interview_demonstrated.append(topic)
+
+    interview_gaps: list[str] = []
+    gap_seen: set[str] = set()
+    for concept in unique_missing:
+        key = str(concept).strip().lower()
+        if key and key not in gap_seen:
+            gap_seen.add(key)
+            interview_gaps.append(concept)
+    for gap in interview_brief.get("skill_gaps") or []:
+        key = str(gap).strip().lower()
+        if key and key not in gap_seen and key not in demonstrated_seen:
+            gap_seen.add(key)
+            interview_gaps.append(gap)
+
     # Collect adaptive actions from history.
     adaptive_actions: list[str] = [
         turn.get("adaptive_decision", {}).get("next_action", "")
@@ -644,6 +721,10 @@ def generate_final_report(state: InterviewState) -> dict:
             overall_score=overall_score,
             topics_covered=topics_covered,
             history=history,
+            interview_brief=interview_brief,
+            profile_strengths=profile_strengths,
+            interview_demonstrated_strengths=interview_demonstrated,
+            interview_knowledge_gaps=interview_gaps,
         )
     except Exception:
         logger.warning("Narrative generation failed", exc_info=True)
@@ -660,6 +741,9 @@ def generate_final_report(state: InterviewState) -> dict:
         "total_questions":  question_count,
         "overall_score":    overall_score,
         "topics_covered":   topics_covered,          # from state, not re-derived
+        "profile_strengths": profile_strengths,
+        "interview_demonstrated_strengths": interview_demonstrated,
+        "interview_knowledge_gaps": interview_gaps,
         "adaptive_actions": adaptive_actions,
         "missing_concepts": unique_missing,
         "feedback_notes":   feedback_notes,

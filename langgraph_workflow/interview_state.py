@@ -107,9 +107,9 @@ class _InterviewStateRequired(TypedDict):
 
     topics_covered: list[str]
     """
-    Ordered list of topic strings for which at least one question has
-    been generated. Grows by one entry per generate_question execution.
-    Used by decide_next_step() to avoid repeating exhausted topics.
+    Topics the candidate has sufficiently covered: a reasonable score
+    (typically >= 7) or a completed follow-up cycle. Not marked merely
+    because a question was asked.
     """
 
     # --- Progress and Termination ---
@@ -168,6 +168,18 @@ class _InterviewStateOptional(TypedDict, total=False):
     NOTE: validate this is not None before constructing the thread_id.
     """
 
+    interview_brief: dict[str, Any]
+    """
+    PII-free role + candidate context used by question generation and evaluation.
+    Populated by create_interview_plan.
+    """
+
+    followups_on_current_topic: int
+    """Number of follow-up questions already asked on current_topic."""
+
+    max_followups_per_topic: int
+    """Configurable follow-up limit per topic. Default 2."""
+
     # --- Current Turn — transient, cleared at the start of each cycle ---
     current_question: QuestionDict
     """
@@ -182,6 +194,12 @@ class _InterviewStateOptional(TypedDict, total=False):
     Injected into graph state by FastAPI when the graph is resumed
     (after the INTERRUPT in the wait_for_answer node).
     Cleared at the start of each new question cycle.
+    """
+
+    interviewer_feedback: str
+    """
+    Short candidate-facing reaction after the latest answer.
+    Safe to return to the frontend. Never includes expected_concepts.
     """
 
     current_evaluation: EvaluationDict

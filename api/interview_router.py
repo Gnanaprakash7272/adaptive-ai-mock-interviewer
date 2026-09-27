@@ -28,6 +28,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/interview", tags=["Interview Workflow"])
 
 
+def _public_question(question: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Return the question payload candidates may see. Never includes the rubric."""
+    if not question or not isinstance(question, dict):
+        return question
+    return {
+        "question": question.get("question", ""),
+        "topic": question.get("topic", ""),
+        "difficulty": question.get("difficulty", ""),
+        "question_type": question.get("question_type", ""),
+    }
+
+
 # =============================================================================
 # Pydantic Request/Response Models
 # =============================================================================
@@ -52,6 +64,18 @@ class AnswerRequest(BaseModel):
 # =============================================================================
 # Helper: get graph state safely
 # =============================================================================
+
+def _public_question(question: dict | None) -> dict | None:
+    """Strip hidden grading fields before returning a question to the client."""
+    if not question or not isinstance(question, dict):
+        return question
+    return {
+        "question": question.get("question", ""),
+        "topic": question.get("topic", ""),
+        "difficulty": question.get("difficulty", ""),
+        "question_type": question.get("question_type", ""),
+    }
+
 
 def _get_snapshot(thread_id: str):
     """Return the graph's StateSnapshot for the given thread_id, or None."""
@@ -200,7 +224,7 @@ def start_interview(
     return {
         "success": True,
         "interview_id": interview_id,
-        "question": current_q,
+        "question": _public_question(current_q),
         "question_number": values.get("question_count"),
         "max_questions": values.get("max_questions"),
         "status": "waiting_for_answer",
@@ -435,7 +459,10 @@ def answer_question(
                     weaknesses=report.get("weaknesses"),
                     recommendations=report.get("recommendations"),
                     summary=report.get("summary"),
-                    topics_covered=report.get("topics_covered")
+                    topics_covered=report.get("topics_covered"),
+                    profile_strengths=report.get("profile_strengths"),
+                    interview_demonstrated_strengths=report.get("interview_demonstrated_strengths"),
+                    interview_knowledge_gaps=report.get("interview_knowledge_gaps")
                 )
         except Exception as exc:
             report_error = str(exc)
@@ -456,6 +483,7 @@ def answer_question(
             "success": True,
             "status": "completed",
             "interview_id": interview_id,
+            "interviewer_feedback": new_values.get("interviewer_feedback") or "",
             "final_report": report or {},
         }
 
@@ -464,7 +492,8 @@ def answer_question(
         "success": True,
         "status": "waiting_for_answer",
         "interview_id": interview_id,
-        "question": new_values.get("current_question"),
+        "interviewer_feedback": new_values.get("interviewer_feedback") or "",
+        "question": _public_question(new_values.get("current_question")),
         "question_number": new_values.get("question_count"),
         "max_questions": new_values.get("max_questions"),
     }
@@ -513,7 +542,6 @@ def get_interview(
         "topic": latest_q_row.get("topic", ""),
         "difficulty": latest_q_row.get("difficulty", ""),
         "question_type": latest_q_row.get("question_type", ""),
-        "expected_concepts": latest_q_row.get("expected_concepts", [])
     }
 
     return {
@@ -564,6 +592,9 @@ def get_interview_report(
         "recommendations": report_row.get("recommendations", []),
         "summary": report_row.get("summary", ""),
         "topics_covered": report_row.get("topics_covered", []),
+        "profile_strengths": report_row.get("profile_strengths", []),
+        "interview_demonstrated_strengths": report_row.get("interview_demonstrated_strengths", []),
+        "interview_knowledge_gaps": report_row.get("interview_knowledge_gaps", []),
     }
 
 

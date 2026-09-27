@@ -380,11 +380,15 @@ def create_interview_report(
     recommendations: Optional[List[str]] = None,
     summary: Optional[str] = None,
     topics_covered: Optional[List[str]] = None,
+    profile_strengths: Optional[List[str]] = None,
+    interview_demonstrated_strengths: Optional[List[str]] = None,
+    interview_knowledge_gaps: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Insert an interview_reports row.
 
-    topics_covered: Python list → jsonb column (passed directly; PostgREST serialises).
+    topics_covered and new strength/gap lists: Python list → jsonb column
+    (passed directly; PostgREST serialises).
     `interview_id` has a UNIQUE constraint — one report per interview enforced by DB.
 
     Returns the created row including `report_id`.
@@ -401,9 +405,14 @@ def create_interview_report(
         payload["recommendations"] = recommendations
     if summary is not None:
         payload["summary"] = summary
-    # topics_covered: list → jsonb (PostgREST accepts Python list directly)
     if topics_covered is not None:
         payload["topics_covered"] = topics_covered
+    if profile_strengths is not None:
+        payload["profile_strengths"] = profile_strengths
+    if interview_demonstrated_strengths is not None:
+        payload["interview_demonstrated_strengths"] = interview_demonstrated_strengths
+    if interview_knowledge_gaps is not None:
+        payload["interview_knowledge_gaps"] = interview_knowledge_gaps
 
     try:
         result = supabase.table("interview_reports").insert(payload).execute()

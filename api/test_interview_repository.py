@@ -405,27 +405,39 @@ class TestCreateInterviewReport(RepoTestCase):
         ])
         result = repo.create_interview_report(
             interview_id=1, overall_score=8.5,
-            strengths="Good depth.", weaknesses="Missed edge cases.",
-            recommendations="Practice system design.",
+            strengths=["Good depth."], weaknesses=["Missed edge cases."],
+            recommendations=["Practice system design."],
             summary="Strong overall.",
-            topics_covered=["Python", "OOP", "REST APIs"]
+            topics_covered=["Python", "OOP", "REST APIs"],
+            profile_strengths=["Python", "AWS"],
+            interview_demonstrated_strengths=["OOP"],
+            interview_knowledge_gaps=["REST APIs"]
         )
         self.assertEqual(result["report_id"], 50)
+        
+        payload = self._last_insert_payload()
+        self.assertEqual(payload["profile_strengths"], ["Python", "AWS"])
+        self.assertEqual(payload["interview_demonstrated_strengths"], ["OOP"])
+        self.assertEqual(payload["interview_knowledge_gaps"], ["REST APIs"])
 
-    def test_18_topics_covered_stored_as_list(self):
+    def test_18_lists_stored_as_lists(self):
         self._insert_chain("interview_reports", [{"report_id": 51}])
         topics = ["FastAPI", "LangGraph", "Supabase"]
-        repo.create_interview_report(interview_id=2, topics_covered=topics)
+        repo.create_interview_report(
+            interview_id=2, 
+            topics_covered=topics,
+            profile_strengths=[],
+            interview_demonstrated_strengths=[],
+            interview_knowledge_gaps=[]
+        )
         payload = self._last_insert_payload()
         self.assertIsInstance(payload["topics_covered"], list)
         self.assertEqual(payload["topics_covered"], topics)
+        self.assertEqual(payload["profile_strengths"], [])
+        self.assertEqual(payload["interview_demonstrated_strengths"], [])
+        self.assertEqual(payload["interview_knowledge_gaps"], [])
 
-    def test_18b_topics_covered_none_not_in_payload(self):
-        self._insert_chain("interview_reports", [{"report_id": 52}])
-        repo.create_interview_report(interview_id=3, overall_score=7.0)
-        self.assertNotIn("topics_covered", self._last_insert_payload())
-
-    def test_18c_optional_report_fields_omitted_when_none(self):
+    def test_18b_optional_report_fields_omitted_when_none(self):
         self._insert_chain("interview_reports", [{"report_id": 53}])
         repo.create_interview_report(interview_id=4)
         payload = self._last_insert_payload()

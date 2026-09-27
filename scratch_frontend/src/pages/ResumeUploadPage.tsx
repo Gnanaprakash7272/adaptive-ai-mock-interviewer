@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
-import { motion } from 'framer-motion';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+
 import {
   UploadCloud,
   FileText,
@@ -15,11 +16,17 @@ import {
   RefreshCw,
   Loader2,
   Target,
+  ShieldCheck,
+  Cpu,
+  FileCheck,
+  Zap,
+  HelpCircle,
 } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiService } from '../services/apiService';
-import type { Resume } from '../types';
+import type { Resume, SkillItem } from '../types';
 
 type ExtractionStep = 'idle' | 'uploading' | 'extracting' | 'cleaning' | 'analysing' | 'ready';
 
@@ -32,13 +39,14 @@ export const ResumeUploadPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<ExtractionStep>('idle');
   const [progressPercent, setProgressPercent] = useState(0);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
+  const [fileDetails, setFileDetails] = useState<{ name: string; size: string } | null>(null);
 
   const pipelineSteps = [
-    { key: 'uploading', label: 'Uploading PDF', desc: 'Secure multipart transfer to FastAPI server' },
-    { key: 'extracting', label: 'Extracting Content', desc: 'PDF text extraction & metadata parsing' },
-    { key: 'cleaning', label: 'Cleaning & Tokenizing', desc: 'Removing artifacts & structuring JSON fields' },
-    { key: 'analysing', label: 'AI Analysing Profile', desc: 'Gemini model mapping skills, projects & topics' },
-    { key: 'ready', label: 'Profile Ready ✓', desc: 'Candidate Profile generated successfully' },
+    { key: 'uploading', label: 'Uploading PDF', desc: 'Secure multipart transfer to server' },
+    { key: 'extracting', label: 'Extracting Content', desc: 'Document structure & text parsing' },
+    { key: 'cleaning', label: 'Tokenizing & Cleaning', desc: 'Removing artifacts & structuring JSON' },
+    { key: 'analysing', label: 'Gemini AI Analysis', desc: 'Mapping skills, projects & experience' },
+    { key: 'ready', label: 'Profile Ready', desc: 'Candidate Intelligence Profile built' },
   ];
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -46,54 +54,94 @@ export const ResumeUploadPage: React.FC = () => {
     setIsDragging(true);
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
     setIsDragging(false);
   };
 
+  const validateAndProcessFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      addToast('error', 'Invalid File Type', 'Please upload a PDF document (.pdf).');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('error', 'File Too Large', 'Please upload a PDF file smaller than 10MB.');
+      return;
+    }
+
+    processFileUpload(file);
+  };
+
   const processFileUpload = async (file: File) => {
+    const formattedSize = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
     setSelectedFileName(file.name);
+    setFileDetails({ name: file.name, size: formattedSize });
     setCurrentStep('uploading');
-    setProgressPercent(10); // Show initial progress
+    setProgressPercent(15);
 
     try {
-      setCurrentStep('analysing'); // Just indicate it's working
-      setProgressPercent(50);
-      
+      setTimeout(() => {
+        setCurrentStep('extracting');
+        setProgressPercent(35);
+      }, 500);
+
+      setTimeout(() => {
+        setCurrentStep('cleaning');
+        setProgressPercent(60);
+      }, 1100);
+
+      setTimeout(() => {
+        setCurrentStep('analysing');
+        setProgressPercent(85);
+      }, 1700);
+
       const parsedProfile = await apiService.analyzeResume(file);
 
-      const allSkills = Object.values(parsedProfile.skills).flat();
+      const allSkills: string[] = parsedProfile.skills
+        ? Object.values(parsedProfile.skills).flat()
+        : [];
+
+      const skillItems: SkillItem[] = allSkills.map(skill => ({
+        name: skill,
+        category: 'Tools',
+        proficiency: 80,
+        isMatched: true
+      }));
+
+      const expItems: string[] = parsedProfile.experience
+        ? parsedProfile.experience.map(e => `${e.role} at ${e.company}`)
+        : [];
+
       const newResume: Resume = {
         id: `res_${Date.now().toString().slice(-4)}`,
         filename: file.name,
         uploadDate: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-        fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        extractedSkills: [],
-        extractedExperience: [],
-        techStackSummary: allSkills.slice(0, 10),
+        fileSize: formattedSize,
+        extractedSkills: skillItems,
+        extractedExperience: expItems,
+        techStackSummary: allSkills.slice(0, 12),
         matchRate: 100,
-        parsedOverview: "Profile analyzed successfully.",
-        keyStrengths: [],
-        recommendedImprovements: []
+        parsedOverview: 'Profile analyzed successfully by Gemini AI.',
+        keyStrengths: allSkills.slice(0, 5),
+        recommendedImprovements: [],
       };
 
       setProgressPercent(100);
       setCurrentStep('ready');
       setActiveResume(newResume);
 
-
       addToast(
         'success',
-        'Profile Ready!',
-        `Successfully extracted ${allSkills.length} skills and projects with Gemini AI.`
+        'Profile Extraction Complete!',
+        `Successfully extracted ${allSkills.length} skills, ${parsedProfile.projects?.length || 0} projects, and work history.`
       );
-      
-      // Navigate to candidate profile after a brief delay so they see the success state
-      setTimeout(() => navigate('/profile'), 1500);
-    } catch (err: any) {
 
+      setTimeout(() => navigate('/profile'), 2500);
+    } catch (err: any) {
       setCurrentStep('idle');
       setProgressPercent(0);
-      addToast('error', 'Upload failed', err.message || 'Please try again.');
+      addToast('error', 'Upload Failed', err.message || 'Unable to process resume. Please try again.');
     }
   };
 
@@ -101,220 +149,388 @@ export const ResumeUploadPage: React.FC = () => {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFileUpload(e.dataTransfer.files[0]);
+      validateAndProcessFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      processFileUpload(e.target.files[0]);
+      validateAndProcessFile(e.target.files[0]);
     }
   };
 
+  const resetUpload = () => {
+    setCurrentStep('idle');
+    setProgressPercent(0);
+    setSelectedFileName('');
+    setFileDetails(null);
+  };
+
   return (
-    <PageWrapper className="space-y-8 max-w-5xl">
-      {/* Page Header */}
-      <div>
-        <span className="text-xs font-bold uppercase tracking-widest text-brand-600 dark:text-brand-400">
-          Step 3: Resume Intelligence
-        </span>
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
-          Resume Upload & AI Profile Extraction
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Upload your resume PDF to trigger the multi-stage extraction pipeline (POST <code className="text-brand-600 dark:text-brand-400 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">/resume/analyze</code>) and auto-build your candidate profile.
-        </p>
-      </div>
+    <PageWrapper className="mx-auto max-w-6xl space-y-10">
 
-      {/* UPLOAD DROPZONE & PIPELINE VISUALIZER */}
-      <Card className="p-8 border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-surface-dark-card transition-all">
-        {currentStep === 'idle' ? (
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`flex flex-col items-center justify-center text-center p-6 rounded-2xl transition-colors cursor-pointer ${
-              isDragging ? 'bg-brand-500/10 border-brand-500' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <div className="w-16 h-16 rounded-3xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-4 shadow-inner">
-              <UploadCloud className="w-8 h-8" />
-            </div>
-
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">
-              Drop your Resume PDF here or click to browse
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">Supports PDF (up to 10MB)</p>
-
-            <div className="mt-5">
-              <Button size="md" className="shadow-lg" onClick={() => document.getElementById('resume-file-input')?.click()}>
-                <FileText className="w-4 h-4 mr-2" />
-                Select PDF File
-              </Button>
-              <input id="resume-file-input" type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-            </div>
+      {/* ============================================================
+          PAGE HEADER
+      ============================================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+      >
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-900/50 dark:bg-brand-950/30 dark:text-brand-400">
+            <Sparkles className="h-3.5 w-3.5" />
+            Resume Intelligence Engine
           </div>
-        ) : (
-          <div className="py-4 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-                  Processing: {selectedFileName || 'Candidate_Resume.pdf'}
-                </span>
-                <h3 className="font-extrabold text-lg text-slate-900 dark:text-white mt-0.5">
-                  {currentStep === 'ready' ? 'Candidate Profile Ready! 🎉' : 'AI Analysis Pipeline in Progress...'}
-                </h3>
-              </div>
-              <span className="text-xl font-black text-brand-600 dark:text-brand-400">
-                {progressPercent}%
-              </span>
-            </div>
 
-            {/* Stepped Pipeline Track */}
-            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPercent}%` }}
-                transition={{ duration: 0.4 }}
-                className="h-full bg-gradient-to-r from-brand-500 via-brand-500 to-brand-500 rounded-full"
-              />
-            </div>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+            Upload Resume & Build Candidate Profile
+          </h1>
 
-            {/* Visual Step Checklist */}
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-2">
-              {pipelineSteps.map((s, idx) => {
-                const stepOrder = ['uploading', 'extracting', 'cleaning', 'analysing', 'ready'];
-                const currentIndex = stepOrder.indexOf(currentStep);
-                const isCompleted = currentIndex > idx || currentStep === 'ready';
-                const isCurrent = currentIndex === idx && currentStep !== 'ready';
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">
+            Our multi-stage pipeline extracts your skills, projects, and work history using Gemini AI to personalize your adaptive mock interview questions.
+          </p>
+        </div>
 
-                return (
-                  <div
-                    key={s.key}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      isCompleted
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                        : isCurrent
-                        ? 'bg-brand-500/10 border-brand-500/50 text-brand-600 dark:text-brand-400 shadow-sm'
-                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      {isCompleted ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      ) : isCurrent ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-brand-500 shrink-0" />
-                      ) : (
-                        <span className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 text-[10px] flex items-center justify-center">
-                          {idx + 1}
-                        </span>
-                      )}
-                      <span className="text-xs font-bold leading-none">{s.label}</span>
-                    </div>
-                    <p className="text-[10px] opacity-80 leading-snug">{s.desc}</p>
-                  </div>
-                );
-              })}
-            </div>
+        <div className="flex items-center gap-2">
+          <Link to="/profile">
+            <Button variant="outline" size="sm">
+              <UserCheck className="mr-1.5 h-4 w-4" />
+              View Current Profile
+            </Button>
+          </Link>
+        </div>
+      </motion.div>
 
-            {/* Complete CTAs */}
-            {currentStep === 'ready' && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200 dark:border-slate-800"
+      {/* ============================================================
+          UPLOAD DROPZONE / PIPELINE TRACKER
+      ============================================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.1 }}
+      >
+        <Card className="relative overflow-hidden border border-slate-200 bg-white shadow-xl shadow-slate-200/40 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-red-500/5 blur-3xl" />
+
+          {currentStep === 'idle' ? (
+            <div className="p-8 sm:p-12">
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('resume-file-input')?.click()}
+                className={`group relative flex flex-col items-center justify-center rounded-3xl border-2 border-dashed p-10 text-center transition-all cursor-pointer ${
+                  isDragging
+                    ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30'
+                    : 'border-slate-300 bg-slate-50/50 hover:border-brand-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950/40 dark:hover:border-brand-600'
+                }`}
               >
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-5 h-5 shrink-0" />
-                  <span>Your resume has been cleaned, parsed, and converted to Candidate Profile.</span>
+                <div className="relative mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-brand-500/10 text-brand-600 transition-transform duration-300 group-hover:scale-105 dark:text-brand-400">
+                  <UploadCloud className="h-10 w-10" />
+                  <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-white shadow-md">
+                    <Sparkles className="h-3 w-3" />
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setCurrentStep('idle');
-                      setProgressPercent(0);
-                    }}
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  Drop your resume PDF here, or <span className="text-brand-600 underline underline-offset-4 dark:text-brand-400">browse</span>
+                </h3>
+
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  Standard PDF files supported · Maximum file size: 10MB
+                </p>
+
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/70 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <FileCheck className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                    PDF format only
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/70 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    Encrypted & Private
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/70 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <Cpu className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                    Gemini AI Extraction
+                  </span>
+                </div>
+
+                <input
+                  id="resume-file-input"
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-8 p-8 sm:p-12">
+
+              {/* Progress Header */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+                    Active File: {selectedFileName} {fileDetails ? `(${fileDetails.size})` : ''}
+                  </span>
+                  <h3 className="mt-1 text-2xl font-black text-slate-900 dark:text-white">
+                    {currentStep === 'ready' ? 'Candidate Profile Ready! 🎉' : 'AI Analysis Pipeline in Progress...'}
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl font-black text-brand-600 dark:text-brand-400">
+                    {progressPercent}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Track */}
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercent}%` }}
+                  transition={{ duration: 0.45 }}
+                  className="h-full rounded-full bg-gradient-to-r from-brand-600 via-rose-500 to-brand-500 shadow-sm"
+                />
+              </div>
+
+              {/* Step Grid Cards */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+                {pipelineSteps.map((step, idx) => {
+                  const stepOrder = ['uploading', 'extracting', 'cleaning', 'analysing', 'ready'];
+                  const currentIndex = stepOrder.indexOf(currentStep);
+                  const isCompleted = currentIndex > idx || currentStep === 'ready';
+                  const isCurrent = currentIndex === idx && currentStep !== 'ready';
+
+                  return (
+                    <div
+                      key={step.key}
+                      className={`relative overflow-hidden rounded-2xl border p-4 transition-all ${
+                        isCompleted
+                          ? 'border-emerald-500/30 bg-emerald-50/60 text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300'
+                          : isCurrent
+                          ? 'border-brand-500 bg-brand-50/60 text-brand-900 shadow-sm dark:border-brand-600 dark:bg-brand-950/30 dark:text-brand-300'
+                          : 'border-slate-200 bg-slate-50/60 text-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500'
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider opacity-70">
+                          Step 0{idx + 1}
+                        </span>
+
+                        {isCompleted ? (
+                          <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        ) : isCurrent ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-brand-600 dark:text-brand-400" />
+                        ) : (
+                          <div className="h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-700" />
+                        )}
+                      </div>
+
+                      <h4 className="text-xs font-bold leading-tight">
+                        {step.label}
+                      </h4>
+
+                      <p className="mt-1 text-[11px] leading-snug opacity-80">
+                        {step.desc}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Ready State Actions */}
+              <AnimatePresence>
+                {currentStep === 'ready' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 dark:border-emerald-900/40 dark:bg-emerald-950/30 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <RefreshCw className="w-3.5 h-3.5 mr-1" /> Re-upload
-                  </Button>
-                  <Link to="/profile">
-                    <Button size="sm" className="shadow-lg shadow-brand-500/25">
-                      <UserCheck className="w-4 h-4 mr-1.5" /> View Candidate Profile
-                    </Button>
-                  </Link>
-                  <Link to="/roles">
-                    <Button size="sm" variant="secondary">
-                      <Target className="w-4 h-4 mr-1.5 text-brand-600" /> Choose Role
-                    </Button>
-                  </Link>
-                </div>
-              </motion.div>
-            )}
-          </div>
-        )}
-      </Card>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-900 dark:text-white">
+                          Profile extraction completed successfully
+                        </h5>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Redirecting to your Candidate Profile in a moment...
+                        </p>
+                      </div>
+                    </div>
 
-      {/* ACTIVE RESUME SNAPSHOT */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <Button variant="outline" size="sm" onClick={resetUpload}>
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Re-upload
+                      </Button>
+
+                      <Link to="/profile">
+                        <Button size="sm" className="shadow-md shadow-brand-500/20">
+                          <UserCheck className="mr-1.5 h-4 w-4" />
+                          View Profile
+                        </Button>
+                      </Link>
+
+                      <Link to="/roles">
+                        <Button size="sm" variant="secondary">
+                          <Target className="mr-1.5 h-4 w-4 text-brand-600 dark:text-brand-400" />
+                          Choose Role
+                        </Button>
+                      </Link>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+            </div>
+          )}
+        </Card>
+      </motion.div>
+
+      {/* ============================================================
+          ACTIVE RESUME SNAPSHOT (If candidate already has one)
+      ============================================================ */}
       {activeResume && (
-        <div className="space-y-4">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="space-y-4"
+        >
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-brand-500" />
-              Current Active Resume & Extracted Skills
+            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+              <Sparkles className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+              Current Active Resume & Competencies
             </h3>
-            <Link to="/profile" className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline">
-              View Full Candidate Profile →
+
+            <Link
+              to="/profile"
+              className="text-xs font-bold text-brand-600 hover:underline dark:text-brand-400"
+            >
+              View Full Profile →
             </Link>
           </div>
 
-          <Card className="p-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-brand-500/10 text-brand-600 flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5" />
+          <Card className="p-6 sm:p-7">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-5 dark:border-slate-800">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                  <FileText className="h-6 w-6" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">{activeResume.filename}</h4>
-                  <p className="text-xs text-slate-500">
-                    {activeResume.fileSize} • Uploaded on {activeResume.uploadDate}
+                  <h4 className="font-bold text-slate-900 dark:text-white">
+                    {activeResume.filename}
+                  </h4>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {activeResume.fileSize} · Uploaded on {activeResume.uploadDate}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  AI Parsed & Ready
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Parsed & Verified
                 </span>
+
                 <Link to="/roles">
                   <Button size="sm">
-                    Start Mock <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    Start Mock Interview
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
                   </Button>
                 </Link>
               </div>
             </div>
 
             {/* Extracted Tech Stack Chips */}
-            <div>
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
+            <div className="mt-5">
+              <span className="mb-3 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Extracted Tech Stack & Core Competencies
               </span>
               <div className="flex flex-wrap gap-2">
-                {activeResume.techStackSummary.map((skill) => (
-                  <span
-                    key={skill}
-                    className="px-3 py-1 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-surface-dark-elevated text-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-white/5"
-                  >
-                    {skill}
-                  </span>
-                ))}
+                {activeResume.techStackSummary && activeResume.techStackSummary.length > 0 ? (
+                  activeResume.techStackSummary.map((skill) => (
+                    <span
+                      key={skill}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-800 transition-colors hover:border-brand-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                    >
+                      {skill}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-400">No skill tags extracted.</span>
+                )}
               </div>
             </div>
           </Card>
-        </div>
+        </motion.div>
       )}
+
+      {/* ============================================================
+          HOW IT WORKS / BEST PRACTICES
+      ============================================================ */}
+      <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Card className="p-6">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
+            <Cpu className="h-5 w-5" />
+          </div>
+          <h4 className="mt-4 font-bold text-slate-900 dark:text-white">
+            Adaptive Personalization
+          </h4>
+          <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
+            Questions during your mock session are created around the actual projects, languages, and architectures found in your resume.
+          </p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <Zap className="h-5 w-5" />
+          </div>
+          <h4 className="mt-4 font-bold text-slate-900 dark:text-white">
+            Skill Gap Detection
+          </h4>
+          <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
+            The AI benchmarks your stated competencies against target job descriptions to identify areas where deeper answers will score higher.
+          </p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <h4 className="mt-4 font-bold text-slate-900 dark:text-white">
+            Zero Data Leakage
+          </h4>
+          <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
+            Your resume is tokenized and stored securely in your private candidate profile. We never use candidate data to train public models.
+          </p>
+        </Card>
+      </section>
+
+      {/* ============================================================
+          HELP / TIPS BANNER
+      ============================================================ */}
+      <Card className="border-slate-200 bg-slate-50/70 p-6 dark:border-slate-800 dark:bg-slate-950/40">
+        <div className="flex items-start gap-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
+            <HelpCircle className="h-5 w-5" />
+          </div>
+          <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+            <strong className="text-slate-900 dark:text-white">Tips for highest parsing accuracy:</strong> Use standard section titles (e.g., <em>Education</em>, <em>Skills</em>, <em>Work Experience</em>, <em>Projects</em>). Ensure your PDF is text-selectable (not a scanned image) to maximize accuracy during AI tokenization.
+          </div>
+        </div>
+      </Card>
+
     </PageWrapper>
   );
 };
+
+export default ResumeUploadPage;

@@ -31,6 +31,6 @@ def test_topic_rotation():
     dec = decide_next_step(eval_hard, "Python", "medium", ["Python"], role_topics, candidate_topics)
     assert dec["next_action"] == "harder" and dec["next_topic"] == "Python" and dec["difficulty"] == "hard"
     
+if __name__ == "__main__":
+    test_topic_rotation()
     print("ALL TESTS PASSED!")
-
-test_topic_rotation()

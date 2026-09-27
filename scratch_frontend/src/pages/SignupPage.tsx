@@ -3,18 +3,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { User as UserIcon, Mail, Lock, Briefcase, ArrowRight } from 'lucide-react';
+import { User as UserIcon, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { Logo } from '../components/common/Logo';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import type { UserRoleTarget } from '../types';
 import { apiService } from '../services/apiService';
 
 export const SignupPage: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [targetRole, setTargetRole] = useState<UserRoleTarget>('Senior Frontend Architect');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { login } = useAuth();
@@ -27,7 +26,7 @@ export const SignupPage: React.FC = () => {
     try {
       await apiService.signup({ email, password });
       await login(email, password);
-      addToast('success', 'Account Created!', `Target Track set to: ${targetRole}`);
+      addToast('success', 'Account Created!', 'Welcome to AI MOCKORA.');
       navigate('/dashboard');
     } catch (err: any) {
       addToast('error', 'Signup Failed', err.message || 'Could not create account');
@@ -36,16 +35,7 @@ export const SignupPage: React.FC = () => {
     }
   };
 
-  const roleOptions: UserRoleTarget[] = [
-    'Senior Frontend Architect',
-    'Distributed Systems Lead',
-    'Full Stack Lead',
-    'ML Platform Engineer',
-    'DevOps / SRE Lead',
-    'Mobile Software Architect',
-    'Data Platform Engineer',
-    'Cybersecurity Systems Engineer',
-  ];
+
 
   return (
     <PageWrapper className="min-h-[calc(100vh-5rem)] flex items-center justify-center">
@@ -93,25 +83,7 @@ export const SignupPage: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
-              Target Engineering Track
-            </label>
-            <div className="relative">
-              <Briefcase className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <select
-                value={targetRole}
-                onChange={(e) => setTargetRole(e.target.value as UserRoleTarget)}
-                className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-200 dark:border-white/10 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
-              >
-                {roleOptions.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+
 
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
@@ -120,17 +92,29 @@ export const SignupPage: React.FC = () => {
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-200 dark:border-white/10 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+                className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-200 dark:border-white/10 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
               />
+              <button
+                type="button"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 rounded"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 
           <Button type="submit" isLoading={loading} size="lg" className="w-full mt-6">
-            Create Account & Setup Track
+            Create Account
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </form>

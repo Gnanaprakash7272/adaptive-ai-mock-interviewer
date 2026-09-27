@@ -30,3 +30,9 @@ dist-ssr/
 
 # Runtime SQLite state (contains live user session data)
 checkpoints.db*
+# Local development scratch files
+scratch/
+
+# Local AI coding-agent configuration
+.agents/
+skills-lock.json

@@ -1,15 +1,11 @@
-import os
-import json
-import time
-import random
-
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 
 load_dotenv(override=True)
-from gemini_config import get_api_keys, get_model_chain
 
+import json
+
+from ai_schemas import EvaluationOutput, ValidationError, parse_model
+from gemini_config import call_gemini_json
 
 EVALUATION_SCHEMA = {
     "score": 0,
@@ -19,21 +15,18 @@ EVALUATION_SCHEMA = {
     "missing_concepts": [],
     "confidence": 0.0,
     "needs_followup": False,
-    "feedback": ""
+    "feedback": "",
 }
-
 
 SYSTEM_PROMPT = """
 You are an expert technical interview evaluator.
 
 Your task is to evaluate a candidate's answer to an interview question.
 
-You will receive:
-1. The interview question
-2. Expected concepts
-3. Candidate's answer
+Evaluate ONLY the answer provided. Do not invent resume facts.
 
-Evaluate ONLY the answer provided.
+Calibrate expectations to the given role and difficulty.
+Use recent turns only to detect contradiction or missing follow-through.
 
 STRICT RULES:
 
@@ -47,7 +40,7 @@ STRICT RULES:
 6. needs_followup must be true when the answer lacks enough
    depth or contains important missing concepts.
 7. feedback must clearly explain what was done well and what
-   should be improved.
+   should be improved. Do not mention numeric scores or hidden rubrics.
 8. Return ONLY valid JSON.
 9. Follow the exact output schema.
 """
@@ -56,22 +49,40 @@ STRICT RULES:
 def build_evaluation_prompt(
     question: str,
     expected_concepts: list,
-    candidate_answer: str
+    candidate_answer: str,
+    role: str = "",
+    difficulty: str = "medium",
+    recent_turns: list = None,
+    interview_brief: dict = None,
 ) -> str:
+    expected_json = json.dumps(expected_concepts, indent=2, ensure_ascii=False)
+    schema_json = json.dumps(EVALUATION_SCHEMA, indent=2)
 
-    expected_json = json.dumps(
-        expected_concepts,
-        indent=2,
-        ensure_ascii=False
-    )
+    recent = []
+    for turn in (recent_turns or [])[-2:]:
+        recent.append({
+            "question": (turn.get("question") or {}).get("question", ""),
+            "answer": turn.get("answer", ""),
+            "score": (turn.get("evaluation") or {}).get("score"),
+            "missing_concepts": (turn.get("evaluation") or {}).get("missing_concepts", []),
+        })
 
-    schema_json = json.dumps(
-        EVALUATION_SCHEMA,
-        indent=2
-    )
+    brief_context = {}
+    if interview_brief:
+        brief_context = {
+            "matched_skills": interview_brief.get("matched_skills", []),
+            "skill_gaps": interview_brief.get("skill_gaps", []),
+            "required_skills": interview_brief.get("required_skills", []),
+        }
 
     return f"""
 Evaluate the following interview answer.
+
+ROLE:
+{role or "n/a"}
+
+DIFFICULTY:
+{difficulty}
 
 INTERVIEW QUESTION:
 {question}
@@ -82,6 +93,12 @@ EXPECTED CONCEPTS:
 CANDIDATE ANSWER:
 {candidate_answer}
 
+PREVIOUS 1-2 TURNS:
+{json.dumps(recent, indent=2, ensure_ascii=False) if recent else "None"}
+
+CANDIDATE PROFILE CONTEXT (skills only, not evidence of this answer):
+{json.dumps(brief_context, indent=2, ensure_ascii=False)}
+
 OUTPUT SCHEMA:
 {schema_json}
 
@@ -89,106 +106,51 @@ Return ONLY the JSON object.
 """
 
 
-def _call_gemini(system_prompt: str, user_prompt: str) -> str:
-    api_key_entries = get_api_keys()
+def _validate_evaluation(payload: dict) -> dict:
+    return parse_model(EvaluationOutput, payload)
 
-    if not api_key_entries:
-        raise RuntimeError("No Gemini API keys found. Set GEMINI_API_KEY in your .env file.")
-
-    model_chain = get_model_chain()
-
-    max_retries_503 = 3
-
-    for model in model_chain:
-        for key_label, api_key in api_key_entries:
-            client = genai.Client(api_key=api_key)
-            skip_key = False
-            skip_model = False
-
-            for attempt in range(1, max_retries_503 + 1):
-                try:
-                    print(f"[Gemini] model={model} key={key_label} attempt={attempt}/{max_retries_503}")
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=user_prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_prompt,
-                            max_output_tokens=1200,
-                            response_mime_type="application/json"
-                        )
-                    )
-                    print(f"[Gemini] SUCCESS model={model} key={key_label}")
-                    return response.text
-                except Exception as exc:
-                    error_text = str(exc)
-                    if "404" in error_text or "NOT_FOUND" in error_text:
-                        print(f"[Gemini] NOT_FOUND ERROR (404) key={key_label} model={model}. Advancing to next model.")
-                        skip_model = True
-                        break
-                    if "401" in error_text or "403" in error_text:
-                        raise RuntimeError(f"[Gemini] AUTH ERROR (401/403) key={key_label} model={model}. Detail: {error_text}")
-                    if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
-                        print(f"[Gemini] QUOTA_EXHAUSTED key={key_label} model={model}.")
-                        skip_key = True
-                        break
-                    if "503" in error_text or "UNAVAILABLE" in error_text:
-                        if attempt < max_retries_503:
-                            wait = (2 ** attempt) + random.uniform(0, 1)
-                            print(f"[Gemini] UNAVAILABLE key={key_label} model={model} retrying in {wait:.2f}s (attempt {attempt}/{max_retries_503})")
-                            time.sleep(wait)
-                            continue
-                        else:
-                            print(f"[Gemini] UNAVAILABLE — max retries reached key={key_label} model={model}. Advancing to next model.")
-                            skip_model = True
-                            break
-                    raise  # Re-raise other errors
-            if skip_model:
-                break
-        if skip_model:
-            continue
-    raise RuntimeError("Gemini daily quota exhausted or models unavailable. Please try again later.")
 
 def evaluate_answer(
     question: str,
     expected_concepts: list,
-    candidate_answer: str
+    candidate_answer: str,
+    role: str = "",
+    difficulty: str = "medium",
+    recent_turns: list = None,
+    interview_brief: dict = None,
 ) -> dict:
-
     if not question or not question.strip():
-        raise ValueError(
-            "Question is required."
-        )
+        raise ValueError("Question is required.")
 
     if not candidate_answer or not candidate_answer.strip():
-        raise ValueError(
-            "Candidate answer is required."
-        )
+        raise ValueError("Candidate answer is required.")
 
     if not isinstance(expected_concepts, list):
-        raise ValueError(
-            "expected_concepts must be a list."
-        )
+        raise ValueError("expected_concepts must be a list.")
 
     user_prompt = build_evaluation_prompt(
         question,
         expected_concepts,
-        candidate_answer
+        candidate_answer,
+        role=role,
+        difficulty=difficulty,
+        recent_turns=recent_turns,
+        interview_brief=interview_brief,
     )
 
-    raw_response = _call_gemini(
-        SYSTEM_PROMPT,
-        user_prompt
-    )
+    last_error: Exception | None = None
+    for _ in range(2):
+        payload = call_gemini_json(SYSTEM_PROMPT, user_prompt, max_output_tokens=1200)
+        try:
+            return _validate_evaluation(payload)
+        except ValidationError as exc:
+            last_error = exc
+            user_prompt = user_prompt + (
+                "\n\nRETRY: Previous JSON failed validation. "
+                "Scores must be integers 0-10. confidence must be 0.0-1.0. "
+                "needs_followup must be a boolean."
+            )
 
-    try:
-        evaluation = json.loads(
-            raw_response
-        )
-
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "Gemini returned invalid JSON.\n"
-            f"Raw response:\n{raw_response}"
-        ) from exc
-
-    return evaluation
+    raise RuntimeError(
+        "Gemini returned an evaluation that failed validation."
+    ) from last_error

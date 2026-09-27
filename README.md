@@ -1,97 +1,347 @@
 # AI MOCKORA
+**Your Adaptive, AI-Powered Mock Interviewer**
 
-AI MOCKORA is a sophisticated, AI-powered platform designed for practicing technical interviews. It provides an adaptive, conversational mock interview experience tailored specifically to a candidate's uploaded resume and their target engineering role.
+---
 
-The application leverages Large Language Models (LLMs) to dynamically evaluate answers, adjust difficulty, and generate a comprehensive performance report.
+## Demo
+- **Live Demo:** https://mockora-ai.vercel.app
+
+---
+
+## Project Overview
+**AI MOCKORA** is a sophisticated, AI-driven platform that simulates highly realistic technical interviews. Unlike static question banks, MOCKORA reads your resume, understands your target role, and conducts an adaptive, multi-turn interview. It evaluates each answer immediately, adjusts the difficulty of follow-up questions, and provides a deep, actionable feedback report to help you land your dream job.
+
+---
+
+## Problem Statement
+Preparing for technical interviews is broken:
+- Human mock interviews are **expensive** and **hard to schedule**.
+- Generic coding platforms lack **verbal/system-design** context.
+- Most AI tools ask **static, canned questions** that don't reflect a candidate's actual resume or dynamically adapt to their real-time performance.
+
+**MOCKORA solves this** by acting as an expert, dynamic technical interviewer available 24/7.
+
+---
+
+## Key Features
+- **Deep Resume Parsing**: Extracts structured skills and experiences directly from uploaded PDFs.
+- **Adaptive Difficulty**: AI adjusts the interview's difficulty and topic based on the technical depth of your previous answers.
+- **Immediate Evaluation**: Every answer is scored for correctness, completeness, and missing concepts.
+- **Comprehensive Final Reports**: Generates actionable insights, highlighting your demonstrated strengths and knowledge gaps.
+- **Resilient AI Orchestration**: Multi-turn conversational memory powered by LangGraph ensures state is never lost.
+
+---
+
+## Why MOCKORA?
+
+Traditional mock interviews are often static:
+
+`Candidate → Question → Answer → Score`
+
+MOCKORA introduces an adaptive loop:
+
+```text
+Candidate Profile
+        ↓
+Role Intelligence
+        ↓
+    Question
+        ↓
+     Answer
+        ↓
+   Evaluation
+        ↓
+Adaptive Decision
+        ↓
+Follow-up / New Topic / Difficulty Change
+        ↓
+   Final Report
+```
+
+---
+
+## Screenshots
+
+### Landing Page
+![MOCKORA Landing Page](docs/images/landing.png)
+
+### Resume & Candidate Profile
+![Candidate Profile](docs/images/profile.png)
+
+### Role Selection
+![Role Selection](docs/images/role-selection.png)
+
+### Adaptive Interview
+![Interview Room](docs/images/interview.png)
+
+### Final Report
+![Interview Report](docs/images/report.png)
+
+---
 
 ## System Architecture
 
-The platform is built on a modern, decoupled architecture:
+MOCKORA is built on a modern, decoupled architecture designed for scale and maintainability:
+- **Frontend**: A sleek Single Page Application (SPA) providing a responsive conversational interview interface.
+- **Backend API**: A robust REST API routing requests, enforcing security, and interfacing with the database.
+- **AI Orchestration Layer**: A separate graph-based state machine handling complex LLM reasoning chains.
+- **Database**: Relational data store handling users, interview transcripts, and binary graph checkpoints.
 
-- **Frontend**: A sleek, responsive Single Page Application (SPA) built with React 19, TypeScript, Vite, Tailwind CSS, and Framer Motion. (Located in `scratch_frontend/`)
-- **Backend**: A high-performance REST API built with FastAPI (Python 3.13). Handles authentication, database interactions, file processing, and API routing. (Located in `api/`)
-- **AI Orchestration**: Powered by **LangGraph**, the interview flow is modeled as a state machine. This allows for robust state persistence, multi-turn conversational memory, and resilience against AI service interruptions. (Located in `langgraph_workflow/`)
-- **LLM Integration**: Google Gemini 3.5 is utilized for resume parsing, question generation, answer evaluation, and final narrative reporting.
-- **Database**: Supabase PostgreSQL is used as the primary data store. It stores user accounts, candidate profiles, interview session metadata, questions, answers, evaluations, and LangGraph binary checkpoints via `PostgresSaver`.
+### Architecture Diagram
 
-## Key Features
+```text
+                    ┌──────────────────┐
+                    │    Candidate     │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ React + Vite UI  │
+                    └────────┬─────────┘
+                             │ REST
+                             ▼
+                    ┌──────────────────┐
+                    │     FastAPI      │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+       Resume Intelligence  Role       Authentication
+                           Intelligence
+              │              │
+              └───────┬──────┘
+                      ▼
+              ┌─────────────────┐
+              │    LangGraph    │
+              │ Interview State │
+              └────────┬────────┘
+                       │
+                       ▼
+                  ┌─────────┐
+                  │ Gemini  │
+                  └────┬────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │ Supabase        │
+              │ PostgreSQL      │
+              └─────────────────┘
+```
 
-- **Resume Parsing**: Upload a PDF resume. The system extracts text and uses AI to identify core skills and potential interview topics.
-- **Adaptive Interview Engine**: The difficulty of subsequent questions adapts based on the candidate's performance on previous questions.
-- **Detailed Evaluation**: Every answer is scored on correctness, completeness, and technical depth. Missing concepts are identified for constructive feedback.
-- **Comprehensive Reports**: At the end of an interview, a final report highlights demonstrated strengths, knowledge gaps, and actionable recommendations.
-- **Robust Authentication**: Secure JWT-based authentication with PBKDF2 password hashing and an Email OTP fallback mechanism for password resets.
+---
 
-## Prerequisites
+## AI Architecture
 
-- **Python**: 3.13 or newer, using [uv](https://docs.astral.sh/uv/) for lightning-fast dependency management.
-- **Node.js**: v18+ and `npm`.
-- **Supabase**: A Supabase project with a PostgreSQL database.
-- **Gemini API Key**: An active Google Gemini API key.
+### LLM vs Application Control
 
-## Local Setup
+MOCKORA separates language intelligence from application control.
 
-### 1. Database Configuration
+**The LLM is responsible for:**
+- Question generation
+- Answer evaluation
+- Feedback generation
+- Final report generation
 
-1. Initialize your Supabase project.
-2. Run the migration scripts in the `docs/` or `scratch/` folder to provision the necessary tables (`users`, `resumes`, `interviews`, `questions`, `answers`, `evaluations`, `adaptive_decisions`, `interview_reports`, `password_reset_otps`).
-3. Note your Supabase connection strings. LangGraph's `PostgresSaver` requires a connection that supports pipeline mode (use the session pooler URL or direct connection).
+**The deterministic application layer is responsible for:**
+- Interview state
+- Topic coverage
+- Difficulty transitions
+- Follow-up limits
+- User ownership
+- Persistence
+- Workflow routing
 
-### 2. Backend Setup
+LangGraph coordinates these components as a stateful interview workflow.
+- **Nodes**: Distinct steps (Plan, Generate Question, Evaluate, Decide Next Step, Generate Report).
+- **Checkpointer**: Uses `PostgresSaver` to serialize and save the exact interview state to the database after every node. This ensures the interview can gracefully recover from network failures, server restarts, or duplicated requests.
 
-1. Copy `.env.example` to `.env` in the root directory.
-2. Fill in the required environment variables:
-   - `SUPABASE_URL` and `SUPABASE_KEY`
-   - `DATABASE_URL` (Supabase connection string)
-   - `JWT_SECRET_KEY`
-   - `GEMINI_API_KEY`
-3. Install Python dependencies:
-   ```bash
-   uv sync
-   ```
-4. Start the FastAPI development server:
-   ```bash
-   uv run uvicorn api.main:app --reload
-   ```
-5. The API will be available at `http://localhost:8000`. API documentation is automatically generated at `http://localhost:8000/docs`.
+---
 
-### 3. Frontend Setup
+## Tech Stack
+- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, Framer Motion, Lucide Icons.
+- **Backend**: FastAPI, Python 3.13, `uv` (dependency management), PyJWT.
+- **AI / LLM**: Google Gemini API, LangGraph, PyMuPDF (PDF parsing).
+- **Database**: Supabase (PostgreSQL), `supabase-py`, `asyncpg`.
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd scratch_frontend
-   ```
-2. Copy `.env.example` to `.env.local` and configure `VITE_API_BASE_URL` to point to your backend (e.g., `http://localhost:8000`).
-3. Install Node dependencies:
-   ```bash
-   npm install
-   ```
-4. Start the Vite development server:
-   ```bash
-   npm run dev
-   ```
-5. Access the application in your browser at `http://localhost:5173`.
+---
 
-## Testing & Quality Assurance
+## Project Structure
+```text
+adaptive-ai-mock-interviewer/
+├── adaptive_intellegence/ # Core adaptive logic and difficulty tuning
+├── answer_intellegence/   # Answer evaluation and feedback generation
+├── api/                   # FastAPI backend, routers, auth, repositories
+├── docs/                  # Database schema migrations, diagrams, images
+├── langgraph_workflow/    # Orchestration, state definitions, graph nodes
+├── question_intellegence/ # Generates dynamic follow-ups and new questions
+├── report_intellegence/   # Final evaluation report generation logic
+├── resume_intellegence/   # PDF parsing and candidate profile extraction
+├── scratch_frontend/      # React + Vite frontend application
+├── ai_schemas.py          # Pydantic schemas for LLM structured outputs
+├── gemini_config.py       # Centralized Gemini model configuration
+├── pyproject.toml         # Python project metadata
+├── pytest.ini             # Pytest configuration
+├── requirements.txt       # Dependencies
+├── uv.lock                # Locked dependencies for uv
+└── README.md              # Project documentation
+```
 
-AI MOCKORA includes a comprehensive test suite to ensure stability and reliability.
+---
 
-- **Backend Unit & Integration Tests**:
-  ```bash
-  uv run pytest api/
-  ```
-  These tests are heavily mocked to run locally without requiring live database or Gemini connections. They cover all critical logic including authentication gates, repository state management, error handling, and robust edge-case coverage (expired JWTs, duplicate submissions, invalid IDs).
+## Adaptive Interview Logic
 
-- **LangGraph Workflow Tests**:
-  ```bash
-  uv run pytest langgraph_workflow/
-  ```
+After each answer, MOCKORA evaluates:
+- Correctness
+- Completeness
+- Technical depth
+- Missing concepts
+- Confidence
+- Follow-up requirement
 
-- **End-to-End Validation**:
-  The `test_e2e_flow.py` script performs a complete live integration test spanning user signup, resume upload, and a full mock interview loop, verifying that AI generation and database persistence function flawlessly together. (Requires live configuration).
+The adaptive engine combines these signals with the current interview history and topic coverage to determine the next action.
 
-## Security & Privacy
+**Possible actions include:**
+- Ask a targeted follow-up
+- Increase difficulty
+- Maintain difficulty
+- Reduce difficulty
+- Move to a new topic
+- Complete the interview
 
-- **Data Isolation**: LangGraph threads are firmly tied to specific `interview_id`s, and the API enforces strict ownership checks ensuring users can only interact with their own data.
-- **Exception Handling**: Global exception handlers ensure that internal stack traces or AI API keys are never leaked to the client during a failure.
-- **Passwords**: Never stored in plaintext; hashed securely using PBKDF2.
+A topic is not considered fully covered simply because a candidate answered one question. The engine can use follow-up questions to verify understanding before moving forward.
+
+---
+
+## Resume Intelligence
+MOCKORA doesn't just read text; it understands context.
+- **Extraction**: `PyMuPDF` reads the raw PDF bytes.
+- **Sanitization**: Regular expressions clean out control characters and formatting artifacts.
+- **Structuring**: The Gemini model parses the raw text into a strict JSON schema containing potential interview topics, skills, and experience.
+
+---
+
+## Authentication
+- **Authentication**: JWT-based authentication
+- **Password Security**: PBKDF2 password hashing with random salts
+- **Recovery**: Email OTP-based password reset
+
+---
+
+## Database Design
+MOCKORA relies on a highly normalized PostgreSQL schema hosted on Supabase:
+- `users`: Core identity and authentication.
+- `interviews`: Session metadata (role, status, timestamps).
+- `questions` & `answers`: The chronological transcript of the session.
+- `interview_reports`: The final aggregated output.
+- `password_reset_otps`: Time-bound codes for account recovery.
+
+---
+
+## Setup & Installation
+
+### Prerequisites
+- Python 3.13+ and [uv](https://docs.astral.sh/uv/)
+- Node.js v18+ and `npm`
+- A Supabase PostgreSQL database
+- A Google Gemini API Key
+
+### Clone the Repository
+```bash
+git clone https://github.com/Gnanaprakash7272/adaptive-ai-mock-interviewer.git
+cd adaptive-ai-mock-interviewer
+```
+
+---
+
+## Environment Variables
+Copy `.env.example` to `.env` in the root directory and populate:
+```env
+# Supabase
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_KEY="your-anon-or-service-key"
+DATABASE_URL="postgresql://user:pass@host:5432/postgres" # Session Pooler or Direct
+
+# AI
+GEMINI_API_KEY="your-google-gemini-key"
+
+# Security
+JWT_SECRET_KEY="a-very-secure-random-string"
+
+# SMTP (Optional, for Password Resets)
+SMTP_SERVER="smtp.gmail.com"
+SMTP_PORT=587
+SMTP_USERNAME="youremail@gmail.com"
+SMTP_PASSWORD="your-app-password"
+```
+
+---
+
+## Running the Project
+
+**1. Start the Backend API:**
+```bash
+uv sync
+uv run uvicorn api.main:app --reload
+```
+*API runs on `http://localhost:8000`. Swagger docs at `/docs`.*
+
+**2. Start the Frontend Application:**
+```bash
+cd scratch_frontend
+npm install
+# Ensure you copy .env.example to .env.local and set VITE_API_BASE_URL=http://localhost:8000
+npm run dev
+```
+*Frontend runs on `http://localhost:5173`.*
+
+---
+
+## Testing
+MOCKORA includes a comprehensive, decoupled test suite.
+
+**Primary Documented Command:**
+```bash
+uv run pytest -q
+```
+
+**Latest Validation:**
+- Python 3.13.13
+- 224 tests passed
+- 3 tests skipped
+
+---
+
+## Deployment
+The platform is designed to be deployed effortlessly to **Vercel** utilizing Vercel Services:
+- The React application is deployed as the primary frontend project.
+- The FastAPI backend is configured as Serverless Functions via a `vercel.json` rewrite configuration.
+
+---
+
+## Security
+- **Data Isolation**: Application logic strictly enforces that users can only access their own `interview_id` records.
+- **Fail-Safe Orchestration**: Graph exceptions are intercepted and converted to generic 500 API errors, preventing stack-trace or API key leakage.
+- **Injection Protection**: Direct database queries use parameterized `asyncpg` execution, while REST queries use the validated `supabase-py` client.
+
+---
+
+## Team / Contributions
+Contributions are welcome! Please open an issue first to discuss what you would like to change.
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## Future Enhancements
+- 🎙️ **Voice / Audio Mode**: Speech-to-text inputs and text-to-speech AI voices for real-time verbal conversations.
+- 💻 **Integrated Code Editor**: A Monaco-powered coding scratchpad for live algorithmic rounds.
+- 📊 **Historical Analytics Dashboards**: Tracking candidate performance over time across multiple interviews.
+- ⚡ **WebSocket Streaming**: Streaming AI responses chunk-by-chunk for an immediate, sub-second TTFB (Time to First Byte).
+
+---
+
+## License
+Distributed under the MIT License. See `LICENSE` for more information.

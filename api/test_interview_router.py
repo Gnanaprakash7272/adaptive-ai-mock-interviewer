@@ -63,6 +63,16 @@ FAKE_ADAPTIVE = {
     "next_topic": "FastAPI",
 }
 
+# For Phase 2 mocks
+FAKE_PROCESS_OUTPUT = {
+    "evaluation": {
+        "score": 8, "correctness": 8, "completeness": 8, "technical_depth": 8,
+        "confidence": 0.9, "needs_followup": False, "feedback": "Good answer.",
+        "missing_concepts": []
+    },
+    "question_proposal": FAKE_QUESTION
+}
+
 CANDIDATE_PROFILE = {
     "potential_interview_topics": ["FastAPI", "Python"],
     "skills": ["FastAPI", "Python"],
@@ -86,7 +96,7 @@ def _auth_header(user_id: int = FAKE_USER_ID, email: str = FAKE_EMAIL) -> dict:
 def _get_patches():
     return {
         "generate_question": patch("langgraph_workflow.interview_graph._generate_question", return_value=FAKE_QUESTION),
-        "evaluate_answer": patch("langgraph_workflow.interview_graph._evaluate_answer", return_value=FAKE_EVALUATION),
+        "process_candidate_answer": patch("langgraph_workflow.interview_graph._process_candidate_answer", return_value=FAKE_PROCESS_OUTPUT),
         "decide_next_step": patch("langgraph_workflow.interview_graph._decide_next_step", return_value=FAKE_ADAPTIVE),
         "generate_narrative": patch("langgraph_workflow.interview_graph._generate_narrative", return_value={
             "strengths": ["test strength"], "weaknesses": ["test weakness"],
@@ -95,10 +105,9 @@ def _get_patches():
         "create_interview": patch("api.interview_repository.create_interview", return_value={"interview_id": 999}),
         "create_question": patch("api.interview_repository.create_question", return_value={"question_id": 888}),
         "update_interview_state": patch("api.interview_repository.update_interview_state", return_value={}),
+        "save_interview_turn_transaction": patch("api.interview_repository.save_interview_turn_transaction", return_value={}),
         "get_interview_questions": patch("api.interview_repository.get_interview_questions", return_value=[{"question_id": 888}]),
         "create_answer": patch("api.interview_repository.create_answer", return_value={"answer_id": 777}),
-        "create_evaluation": patch("api.interview_repository.create_evaluation", return_value={"evaluation_id": 666}),
-        "create_adaptive_decision": patch("api.interview_repository.create_adaptive_decision", return_value={"decision_id": 555}),
         "complete_interview": patch("api.interview_repository.complete_interview", return_value={}),
         "create_interview_report": patch("api.interview_repository.create_interview_report", return_value={"report_id": 444}),
         "get_answer_by_question_id": patch("api.interview_repository.get_answer_by_question_id", return_value={"answer_id": 777}),

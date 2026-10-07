@@ -16,7 +16,7 @@ class QuestionOutput(BaseModel):
     question: str = Field(min_length=1)
     topic: str = Field(min_length=1)
     difficulty: Literal["easy", "medium", "hard"]
-    question_type: Literal["technical", "project", "conceptual", "problem_solving"]
+    question_type: Literal["technical", "project", "conceptual", "problem_solving", "follow_up"]
     expected_concepts: list[str] = Field(default_factory=list)
 
     @field_validator("question", "topic", mode="before")
@@ -129,6 +129,13 @@ class NarrativeOutput(BaseModel):
         return [str(item).strip() for item in value if str(item).strip()]
 
 
+class ProcessAnswerOutput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    evaluation: EvaluationOutput
+    question_proposal: QuestionOutput | None = None
+
+
 def parse_model(model_cls: type[BaseModel], payload: dict[str, Any]) -> dict[str, Any]:
     """Validate a parsed JSON dict. Raises ValidationError on failure."""
     return model_cls.model_validate(payload).model_dump()
@@ -138,6 +145,7 @@ __all__ = [
     "EvaluationOutput",
     "NarrativeOutput",
     "QuestionOutput",
+    "ProcessAnswerOutput",
     "ValidationError",
     "parse_model",
 ]

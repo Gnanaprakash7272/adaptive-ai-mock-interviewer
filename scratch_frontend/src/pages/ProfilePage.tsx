@@ -359,10 +359,6 @@ export const ProfilePage: React.FC = () => {
                   </p>
                 </div>
               </div>
-
-              <span className="w-fit rounded-full bg-brand-100 px-2.5 py-1 text-[10px] font-bold text-brand-800 dark:bg-brand-950 dark:text-brand-300">
-                LangGraph Interview Engine
-              </span>
             </div>
           </div>
 

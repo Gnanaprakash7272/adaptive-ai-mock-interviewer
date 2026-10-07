@@ -8,7 +8,6 @@ import { Button } from '../components/common/Button';
 
 import {
   UploadCloud,
-  FileText,
   CheckCircle2,
   Sparkles,
   ArrowRight,
@@ -23,23 +22,27 @@ import {
   HelpCircle,
 } from 'lucide-react';
 
-import { useAuth } from '../context/AuthContext';
+
 import { useToast } from '../context/ToastContext';
 import { apiService } from '../services/apiService';
-import type { Resume, SkillItem } from '../types';
+
 
 type ExtractionStep = 'idle' | 'uploading' | 'extracting' | 'cleaning' | 'analysing' | 'ready';
 
 export const ResumeUploadPage: React.FC = () => {
-  const { activeResume, setActiveResume } = useAuth();
+
   const { addToast } = useToast();
   const navigate = useNavigate();
 
   const [isDragging, setIsDragging] = useState(false);
   const [currentStep, setCurrentStep] = useState<ExtractionStep>('idle');
-  const [progressPercent, setProgressPercent] = useState(0);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [fileDetails, setFileDetails] = useState<{ name: string; size: string } | null>(null);
+  const [candidateProfile, setCandidateProfile] = useState<any>(null);
+
+  React.useEffect(() => {
+    apiService.getCandidateProfile().then(setCandidateProfile).catch(() => {});
+  }, []);
 
   const pipelineSteps = [
     { key: 'uploading', label: 'Uploading PDF', desc: 'Secure multipart transfer to server' },
@@ -77,70 +80,22 @@ export const ResumeUploadPage: React.FC = () => {
     const formattedSize = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
     setSelectedFileName(file.name);
     setFileDetails({ name: file.name, size: formattedSize });
-    setCurrentStep('uploading');
-    setProgressPercent(15);
+    setCurrentStep('analysing');
 
     try {
-      setTimeout(() => {
-        setCurrentStep('extracting');
-        setProgressPercent(35);
-      }, 500);
+      await apiService.analyzeResume(file);
 
-      setTimeout(() => {
-        setCurrentStep('cleaning');
-        setProgressPercent(60);
-      }, 1100);
-
-      setTimeout(() => {
-        setCurrentStep('analysing');
-        setProgressPercent(85);
-      }, 1700);
-
-      const parsedProfile = await apiService.analyzeResume(file);
-
-      const allSkills: string[] = parsedProfile.skills
-        ? Object.values(parsedProfile.skills).flat()
-        : [];
-
-      const skillItems: SkillItem[] = allSkills.map(skill => ({
-        name: skill,
-        category: 'Tools',
-        proficiency: 80,
-        isMatched: true
-      }));
-
-      const expItems: string[] = parsedProfile.experience
-        ? parsedProfile.experience.map(e => `${e.role} at ${e.company}`)
-        : [];
-
-      const newResume: Resume = {
-        id: `res_${Date.now().toString().slice(-4)}`,
-        filename: file.name,
-        uploadDate: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-        fileSize: formattedSize,
-        extractedSkills: skillItems,
-        extractedExperience: expItems,
-        techStackSummary: allSkills.slice(0, 12),
-        matchRate: 100,
-        parsedOverview: 'Profile analyzed successfully by Gemini AI.',
-        keyStrengths: allSkills.slice(0, 5),
-        recommendedImprovements: [],
-      };
-
-      setProgressPercent(100);
       setCurrentStep('ready');
-      setActiveResume(newResume);
 
       addToast(
         'success',
         'Profile Extraction Complete!',
-        `Successfully extracted ${allSkills.length} skills, ${parsedProfile.projects?.length || 0} projects, and work history.`
+        `Successfully extracted information and built candidate profile.`
       );
 
-      setTimeout(() => navigate('/profile'), 2500);
+      navigate('/profile', { replace: true });
     } catch (err: any) {
       setCurrentStep('idle');
-      setProgressPercent(0);
       addToast('error', 'Upload Failed', err.message || 'Unable to process resume. Please try again.');
     }
   };
@@ -161,7 +116,6 @@ export const ResumeUploadPage: React.FC = () => {
 
   const resetUpload = () => {
     setCurrentStep('idle');
-    setProgressPercent(0);
     setSelectedFileName('');
     setFileDetails(null);
   };
@@ -222,6 +176,13 @@ export const ResumeUploadPage: React.FC = () => {
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => document.getElementById('resume-file-input')?.click()}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    document.getElementById('resume-file-input')?.click();
+                  }
+                }}
                 className={`group relative flex flex-col items-center justify-center rounded-3xl border-2 border-dashed p-10 text-center transition-all cursor-pointer ${
                   isDragging
                     ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30'
@@ -250,7 +211,7 @@ export const ResumeUploadPage: React.FC = () => {
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/70 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                     <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    Encrypted & Private
+                    Processed via API
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200/70 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                     <Cpu className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
@@ -277,24 +238,15 @@ export const ResumeUploadPage: React.FC = () => {
                     Active File: {selectedFileName} {fileDetails ? `(${fileDetails.size})` : ''}
                   </span>
                   <h3 className="mt-1 text-2xl font-black text-slate-900 dark:text-white">
-                    {currentStep === 'ready' ? 'Candidate Profile Ready! 🎉' : 'AI Analysis Pipeline in Progress...'}
+                    {currentStep === 'ready' ? 'Candidate Profile Ready! 🎉' : 'Analysing your resume...'}
                   </h3>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl font-black text-brand-600 dark:text-brand-400">
-                    {progressPercent}%
-                  </span>
                 </div>
               </div>
 
               {/* Progress Track */}
               <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercent}%` }}
-                  transition={{ duration: 0.45 }}
-                  className="h-full rounded-full bg-gradient-to-r from-brand-600 via-rose-500 to-brand-500 shadow-sm"
+                <div
+                  className="h-full w-full rounded-full bg-gradient-to-r from-brand-600 via-rose-500 to-brand-500 shadow-sm animate-pulse"
                 />
               </div>
 
@@ -398,7 +350,7 @@ export const ResumeUploadPage: React.FC = () => {
       {/* ============================================================
           ACTIVE RESUME SNAPSHOT (If candidate already has one)
       ============================================================ */}
-      {activeResume && (
+      {candidateProfile && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -408,7 +360,7 @@ export const ResumeUploadPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
               <Sparkles className="h-5 w-5 text-brand-600 dark:text-brand-400" />
-              Current Active Resume & Competencies
+              Current Candidate Profile
             </h3>
 
             <Link
@@ -423,14 +375,14 @@ export const ResumeUploadPage: React.FC = () => {
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-5 dark:border-slate-800">
               <div className="flex items-center gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-                  <FileText className="h-6 w-6" />
+                  <UserCheck className="h-6 w-6" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900 dark:text-white">
-                    {activeResume.filename}
+                    {candidateProfile.candidate?.name || 'Candidate Name'}
                   </h4>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {activeResume.fileSize} · Uploaded on {activeResume.uploadDate}
+                    {candidateProfile.candidate?.email || 'Email not provided'} · {candidateProfile.candidate?.phone || 'Phone not provided'}
                   </p>
                 </div>
               </div>
@@ -438,7 +390,7 @@ export const ResumeUploadPage: React.FC = () => {
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Parsed & Verified
+                  Profile Ready
                 </span>
 
                 <Link to="/roles">
@@ -456,8 +408,8 @@ export const ResumeUploadPage: React.FC = () => {
                 Extracted Tech Stack & Core Competencies
               </span>
               <div className="flex flex-wrap gap-2">
-                {activeResume.techStackSummary && activeResume.techStackSummary.length > 0 ? (
-                  activeResume.techStackSummary.map((skill) => (
+                {candidateProfile.skills && Object.keys(candidateProfile.skills).length > 0 ? (
+                  Object.values(candidateProfile.skills).flat().slice(0, 15).map((skill: any) => (
                     <span
                       key={skill}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-800 transition-colors hover:border-brand-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
@@ -507,10 +459,10 @@ export const ResumeUploadPage: React.FC = () => {
             <ShieldCheck className="h-5 w-5" />
           </div>
           <h4 className="mt-4 font-bold text-slate-900 dark:text-white">
-            Zero Data Leakage
+            Secure Processing
           </h4>
           <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
-            Your resume is tokenized and stored securely in your private candidate profile. We never use candidate data to train public models.
+            Your resume is securely transmitted to our backend for parsing and candidate profile generation.
           </p>
         </Card>
       </section>

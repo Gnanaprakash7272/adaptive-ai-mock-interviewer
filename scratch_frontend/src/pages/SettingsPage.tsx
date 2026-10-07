@@ -6,15 +6,12 @@ import { Button } from '../components/common/Button';
 import {
   Sun,
   Moon,
-  Mic,
   Database,
   Save,
-  CheckCircle2,
-  AlertCircle,
   LogOut,
-  RefreshCw,
   User,
   ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -27,38 +24,7 @@ export const SettingsPage: React.FC = () => {
   const { addToast } = useToast();
   const navigate = useNavigate();
 
-  const [micVolume, setMicVolume] = useState(75);
-  const [testingMic, setTestingMic] = useState(false);
   const [apiBaseUrl, setApiBaseUrl] = useState(getApiBaseUrl());
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'online' | 'offline'>('idle');
-
-  const handleTestMic = () => {
-    setTestingMic(true);
-    addToast('info', 'Microphone Test Active', 'Speak into your mic to test volume input level.');
-    setTimeout(() => {
-      setTestingMic(false);
-      addToast('success', 'Microphone Verified!', 'Audio input levels are optimal for evaluation.');
-    }, 2500);
-  };
-
-  const handleTestBackendConnection = async () => {
-    setTestingConnection(true);
-    setConnectionStatus('idle');
-    try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/docs`, { method: 'HEAD', mode: 'no-cors' });
-      // If no network error was thrown, server is reachable
-      if (res) {
-        setConnectionStatus('online');
-        addToast('success', 'FastAPI Backend Online!', `Connected successfully to ${apiBaseUrl}`);
-      }
-    } catch {
-      setConnectionStatus('offline');
-      addToast('warning', 'Backend Unreachable', `Could not reach ${apiBaseUrl}. Running in smart simulated mode.`);
-    } finally {
-      setTestingConnection(false);
-    }
-  };
 
   const handleSaveSettings = () => {
     if (import.meta.env.DEV) {
@@ -114,31 +80,7 @@ export const SettingsPage: React.FC = () => {
               placeholder="http://localhost:8000"
               className="flex-1 p-2.5 text-xs rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-200 dark:border-white/10 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleTestBackendConnection}
-              disabled={testingConnection}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${testingConnection ? 'animate-spin' : ''}`} />
-              Test Connection
-            </Button>
           </div>
-
-          {connectionStatus === 'online' && (
-            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 pt-1">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Backend server is online and responding!</span>
-            </div>
-          )}
-
-          {connectionStatus === 'offline' && (
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 pt-1">
-              <AlertCircle className="w-4 h-4" />
-              <span>Backend server not reachable at {apiBaseUrl}. Check that your FastAPI server is running.</span>
-            </div>
-          )}
         </div>
       </Card>
       )}
@@ -186,51 +128,6 @@ export const SettingsPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* AUDIO / MIC TEST SIMULATOR */}
-      <Card className="p-6 space-y-4">
-        <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-          <Mic className="w-5 h-5 text-brand-500" />
-          Audio Input & Microphone Calibration
-        </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Verify microphone input volume level for real-time speech evaluation.
-        </p>
-
-        <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between text-xs font-semibold">
-            <span className="text-slate-700 dark:text-slate-300">Input Sensitivity Volume</span>
-            <span className="text-brand-600 dark:text-brand-400">{micVolume}%</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={micVolume}
-            onChange={(e) => setMicVolume(Number(e.target.value))}
-            className="w-full accent-brand-600 cursor-pointer"
-          />
-
-          {/* Volume Meter Visualizer */}
-          <div className="p-4 rounded-xl bg-slate-100 dark:bg-surface-dark-elevated flex items-center justify-between">
-            <div className="flex items-center gap-1.5 flex-1 max-w-xs">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((bar) => (
-                <div
-                  key={bar}
-                  className={`h-6 flex-1 rounded-sm transition-all ${
-                    testingMic && bar <= 7
-                      ? 'bg-emerald-500 animate-pulse'
-                      : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                />
-              ))}
-            </div>
-            <Button size="sm" onClick={handleTestMic} isLoading={testingMic}>
-              Test Input Level
-            </Button>
-          </div>
-        </div>
-      </Card>
-
       {/* ACCOUNT & SECURITY */}
       {user && (
         <Card className="p-6 space-y-4">
@@ -240,7 +137,7 @@ export const SettingsPage: React.FC = () => {
               Candidate Account & Authentication
             </h3>
             <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-              <ShieldCheck className="w-4 h-4" /> Supabase Authenticated
+              <ShieldCheck className="w-4 h-4" /> Session Authenticated
             </span>
           </div>
 

@@ -73,7 +73,9 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
     } catch {
       // Ignored
     }
-    throw new Error(errorDetail);
+    const err: any = new Error(errorDetail);
+    err.status = response.status;
+    throw err;
   }
   
   return response;
@@ -123,7 +125,10 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/auth/forgot-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email }),
     });
     if (!response.ok) {
@@ -141,7 +146,10 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/auth/verify-reset-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email, otp }),
     });
     if (!response.ok) {
@@ -159,7 +167,10 @@ export const apiService = {
     const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/auth/reset-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
       body: JSON.stringify({ email, reset_token, new_password }),
     });
     if (!response.ok) {
@@ -255,16 +266,17 @@ export const apiService = {
    * Fetch list of technical engineering roles with optional search & filters
    * Calls GET /roles on the backend (the role catalogue is the source of truth).
    */
-  async getRoles(searchQuery?: string, difficultyFilter?: string): Promise<Role[]> {
+  async getRoles(searchQuery?: string, difficultyFilter?: string, signal?: AbortSignal): Promise<Role[]> {
     const baseUrl = getApiBaseUrl();
     const params = new URLSearchParams();
     if (searchQuery) params.set('search', searchQuery);
     if (difficultyFilter && difficultyFilter !== 'All') params.set('difficulty', difficultyFilter);
     const url = `${baseUrl}/roles${params.toString() ? '?' + params.toString() : ''}`;
     try {
-      const response = await fetchWithAuth(url);
+      const response = await fetchWithAuth(url, { signal });
       return (await response.json()) as Role[];
-    } catch {
+    } catch (e: any) {
+      if (e.name === 'AbortError') throw e;
       // Backend unreachable — fall through to empty list
     }
     return [];

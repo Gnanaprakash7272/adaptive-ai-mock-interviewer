@@ -22,6 +22,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const addToast = (type: ToastType, title: string, message?: string) => {
+    // eslint-disable-next-line react/purity -- Date.now/Math.random called inside callback, not during render
     const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
     setToasts((prev) => [...prev, { id, type, title, message }]);
     setTimeout(() => {
@@ -82,6 +83,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
+// eslint-disable-next-line react/only-export-components -- hook intentionally co-located with provider
 export const useToast = (): ToastContextType => {
   const context = useContext(ToastContext);
   if (!context) {

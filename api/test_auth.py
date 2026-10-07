@@ -48,7 +48,7 @@ def make_supabase_mock(select_data=None, insert_data=None, update_data=None):
 # ============================================================================
 
 def test_1_successful_signup():
-    """Verify successful user signup with status 201 and safe response."""
+    """Verify successful user signup returns 200 with generic message (no email-enumeration leak)."""
     test_email = "newuser@example.com"
     test_password = "SecurePassword123!"
 
@@ -63,19 +63,20 @@ def test_1_successful_signup():
             json={"email": test_email, "password": test_password},
         )
 
-    assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.text}"
+    # Phase 2: generic response — always 200 when request is well-formed.
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
-    assert data["user_id"] == 42
-    assert data["email"] == test_email
-    assert data["message"] == "Account created successfully"
+    # Generic message only — no user_id, email, or hash must appear.
+    assert "message" in data
     assert "password_hash" not in data
     assert "password" not in data
+    assert "user_id" not in data  # must not leak account existence
 
     print("PASS  test_1_successful_signup")
 
 
 def test_2_duplicate_email():
-    """Verify signup rejection when email already exists (HTTP 400)."""
+    """Verify duplicate-email signup returns 200 with same generic message (prevents enumeration)."""
     existing_email = "existing@example.com"
 
     mock_supabase, _ = make_supabase_mock(
@@ -88,8 +89,14 @@ def test_2_duplicate_email():
             json={"email": existing_email, "password": "SecurePassword123!"},
         )
 
-    assert response.status_code == 400, f"Expected 400, got {response.status_code}: {response.text}"
-    assert "already registered" in response.json()["detail"].lower()
+    # Phase 2: same 200 + generic message — must NOT reveal that the email exists.
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    data = response.json()
+    assert "message" in data
+    assert "already registered" not in data["message"].lower(), (
+        "Error: response reveals that email is already registered (user enumeration)."
+    )
+    assert "user_id" not in data
 
     print("PASS  test_2_duplicate_email")
 
@@ -187,14 +194,17 @@ def test_6_nonexistent_user():
 
 
 def test_7_password_stored_as_hash_not_plaintext():
-    """Verify that passwords are securely hashed using PBKDF2-HMAC-SHA256 and never stored in plaintext."""
+    """Verify that passwords are securely hashed (Argon2id or PBKDF2) and never stored in plaintext."""
     raw_pwd = "MySecretPlaintextPassword123!"
     hashed = hash_password(raw_pwd)
 
     # 1. Direct hashing assertions
     assert hashed != raw_pwd
     assert raw_pwd not in hashed
-    assert hashed.startswith("pbkdf2_sha256$260000$")
+    # Hash must be Argon2id ($argon2id$...) or legacy PBKDF2
+    is_argon2 = hashed.startswith("$argon2")
+    is_pbkdf2 = hashed.startswith("pbkdf2_sha256$260000$")
+    assert is_argon2 or is_pbkdf2, f"Unexpected hash scheme: {hashed[:30]}"
     assert verify_password(raw_pwd, hashed) is True
     assert verify_password("WrongPassword123!", hashed) is False
 
@@ -210,12 +220,15 @@ def test_7_password_stored_as_hash_not_plaintext():
             json={"email": "hashcheck@example.com", "password": raw_pwd},
         )
 
-    # Inspect the exact dictionary passed to supabase.table('users').insert(...)
     insert_call_args = query_builder.insert.call_args[0][0]
     inserted_password_hash = insert_call_args["password_hash"]
 
     assert inserted_password_hash != raw_pwd, "Security Alert: Plaintext password was passed to insert!"
-    assert inserted_password_hash.startswith("pbkdf2_sha256$260000$")
+    is_argon2_stored = inserted_password_hash.startswith("$argon2")
+    is_pbkdf2_stored = inserted_password_hash.startswith("pbkdf2_sha256$260000$")
+    assert is_argon2_stored or is_pbkdf2_stored, (
+        f"Unexpected hash scheme in insert: {inserted_password_hash[:30]}"
+    )
     assert verify_password(raw_pwd, inserted_password_hash) is True
 
     print("PASS  test_7_password_stored_as_hash_not_plaintext")
@@ -268,7 +281,8 @@ def test_9_response_never_exposes_password_hash():
             json={"email": "nohash@example.com", "password": raw_pwd},
         )
 
-    assert signup_res.status_code == 201
+    # Phase 2: always 200 with generic response
+    assert signup_res.status_code == 200
     signup_json_str = signup_res.text
     assert "password_hash" not in signup_json_str
     assert hashed not in signup_json_str

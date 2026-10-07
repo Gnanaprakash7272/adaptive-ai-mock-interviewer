@@ -214,8 +214,16 @@ class _InterviewStateOptional(TypedDict, total=False):
     """
     The decision dict returned by decide_next_step() for the current turn.
     Schema: {next_action, next_topic, difficulty, reason}
-    next_action is one of: "follow_up", "easier", "harder", "new_topic"
+    next_action is one of: "follow_up", "easier", "harder", "new_topic", "same_topic"
     Set by the adaptive_decision node; cleared at the start of the next cycle.
+    """
+
+    topics_visited: list[str]
+    """
+    Every topic the engine has navigated to (including weak ones), regardless
+    of mastery score. Used to prevent A→B→A→B ping-pong for weak candidates.
+    A topic is added to this list when next_action == "new_topic".
+    Initialized from topics_covered for backward compatibility.
     """
 
     # --- Result ---

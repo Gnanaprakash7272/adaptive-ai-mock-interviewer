@@ -17,30 +17,59 @@ dependencies = [
     "requests>=2.34.2",
     "langgraph-checkpoint-postgres>=3.1.2",
     "psycopg[binary]>=3.2.0",
+    "argon2-cffi>=23.1.0",
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
 ]
 
-[tool.pytest.ini_options]
-# Restrict pytest to the project directory only — prevents F:\ root traversal on Windows.
-# pytest 9.x / Python 3.13 tries to stat parent dirs for symlink detection,
-# which fails with PermissionError on restricted Windows drives (e.g. F:\).
-# Setting rootdir and testpaths to the project directory prevents the issue.
-testpaths = [
-    ".",
+# ---------------------------------------------------------------------------
+# NOTE: pytest configuration lives in pytest.ini (not here) to avoid
+# F:\ root traversal issues with pytest 9.x on Windows restricted drives.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+exclude = [".venv", "scratch_frontend", "node_modules"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
 ]
-norecursedirs = [
-    ".venv",
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    "__pycache__",
-    "scratch_frontend",
-    "frontend",
+ignore = [
+    "E501",   # line too long — enforced by line-length above
+    "B008",   # do not perform function calls in argument defaults (FastAPI pattern)
+    "UP007",  # allow Optional[X] syntax for now
 ]
-# Disable symlink-based rootdir detection to avoid F:\ stat on Windows
-addopts = "--no-header"
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "api", "gemini_config", "ai_schemas",
+    "resume_intelligence", "answer_intelligence",
+    "question_intelligence", "adaptive_intelligence",
+    "report_intelligence", "langgraph_workflow",
+]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+strict = false
+ignore_missing_imports = true
+exclude = [".venv", "scratch_frontend", "node_modules"]

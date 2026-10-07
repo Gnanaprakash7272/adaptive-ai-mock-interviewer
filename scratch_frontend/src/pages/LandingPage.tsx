@@ -91,19 +91,19 @@ export const LandingPage: React.FC = () => {
 
   const faqs = [
     {
-      question: 'How does the adaptive difficulty algorithm work?',
+      question: 'How does the adaptive difficulty work?',
       answer:
-        'Mockora tracks your technical accuracy, depth, and communication on every turn. When you give an insightful answer, the interviewer dynamically challenges you with advanced follow-ups (e.g., edge cases, race conditions, scaling limits). If an area is shaky, it gauges your core foundation without getting stuck.',
+        'Mockora evaluates your technical accuracy and communication. Depending on your answers, the AI can ask follow-up questions to explore your understanding of the topic or pivot to core fundamentals.',
     },
     {
-      question: 'Does the interview evaluate real code or architectural design?',
+      question: 'Does the interview evaluate code or architectural design?',
       answer:
-        'Yes! Mockora supports both technical reasoning, coding algorithms, and architectural system design questions tailored to your chosen seniority level from Junior to Staff Engineer.',
+        'Mockora supports conceptual technical reasoning and system design questions. It evaluates text-based explanations and does not feature a live code execution or compiler environment.',
     },
     {
       question: 'Can I upload my own custom resume?',
       answer:
-        'Absolutely. You can upload your PDF resume, and Mockora extracts your tech stack, past achievements, and project highlights to ask realistic, resume-grounded interview questions just like real tech companies.',
+        'Yes. You can upload your PDF resume, and Mockora extracts your tech stack and past achievements to ground the interview questions in your actual experience.',
     },
     {
       question: 'Is my interview history and resume kept private?',
@@ -165,7 +165,7 @@ export const LandingPage: React.FC = () => {
                     className="group rounded-full bg-brand-600 px-8 py-4 text-base font-bold text-white shadow-xl shadow-brand-500/30 transition-all hover:-translate-y-0.5 hover:bg-brand-700 hover:shadow-brand-500/40 dark:bg-brand-500 dark:hover:bg-brand-600"
                   >
                     Start Free Practice
-                    <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                    <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
                   </Button>
                 </Link>
 
@@ -175,7 +175,7 @@ export const LandingPage: React.FC = () => {
                     size="lg"
                     className="rounded-full border-slate-300 bg-white/80 px-7 py-4 text-base font-semibold text-slate-700 backdrop-blur-sm transition-all hover:bg-slate-100 hover:text-slate-900 dark:border-white/10 dark:bg-surface-dark-card/80 dark:text-slate-200 dark:hover:bg-white/5 dark:hover:text-white"
                   >
-                    <Compass className="mr-2 h-5 w-5 text-brand-500" />
+                    <Compass className="mr-2 h-5 w-5 text-brand-500" aria-hidden="true" />
                     Explore Roles
                   </Button>
                 </Link>
@@ -186,7 +186,7 @@ export const LandingPage: React.FC = () => {
 
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400">
-                    <FileText className="h-5 w-5" />
+                    <FileText className="h-5 w-5" aria-hidden="true" />
                   </div>
 
                   <div>
@@ -201,7 +201,7 @@ export const LandingPage: React.FC = () => {
 
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400">
-                    <Target className="h-5 w-5" />
+                    <Target className="h-5 w-5" aria-hidden="true" />
                   </div>
 
                   <div>
@@ -216,7 +216,7 @@ export const LandingPage: React.FC = () => {
 
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400">
-                    <BarChart3 className="h-5 w-5" />
+                    <BarChart3 className="h-5 w-5" aria-hidden="true" />
                   </div>
 
                   <div>
@@ -262,51 +262,6 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        {/* ───────────────────────── METRICS / SOCIAL PROOF ───────────────────────── */}
-        <section className="relative z-10 border-y border-slate-100 bg-slate-50/60 py-10 dark:border-white/5 dark:bg-surface-dark-card/30">
-          <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
-            <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-slate-950 sm:text-4xl dark:text-white">
-                  10,000+
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm dark:text-slate-400">
-                  Mock Questions Evaluated
-                </p>
-              </div>
-
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-brand-600 sm:text-4xl dark:text-brand-400">
-                  15+
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm dark:text-slate-400">
-                  Specialized Engineering Tracks
-                </p>
-              </div>
-
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-slate-950 sm:text-4xl dark:text-white">
-                  94%
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm dark:text-slate-400">
-                  Candidate Confidence Rate
-                </p>
-              </div>
-
-              <div className="text-center">
-                <p className="text-3xl font-extrabold text-brand-600 sm:text-4xl dark:text-brand-400">
-                  &lt; 1.5s
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm dark:text-slate-400">
-                  Adaptive Feedback Latency
-                </p>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
         {/* ───────────────────────── HOW IT WORKS ───────────────────────── */}
         <section className="relative z-10 py-24 sm:py-28">
           <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
@@ -342,7 +297,7 @@ export const LandingPage: React.FC = () => {
                       </span>
 
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400">
-                        <Icon className="h-6 w-6" />
+                        <Icon className="h-6 w-6" aria-hidden="true" />
                       </div>
                     </div>
 
@@ -379,7 +334,7 @@ export const LandingPage: React.FC = () => {
                 <p className="mt-4 text-base leading-7 text-slate-600 dark:text-slate-400">
                   Mockora doesn’t just look for buzzwords. It evaluates
                   technical accuracy, architectural trade-offs, and
-                  communication clarity to provide human-caliber interview
+                  communication clarity to provide detailed interview
                   feedback.
                 </p>
 
@@ -387,7 +342,7 @@ export const LandingPage: React.FC = () => {
 
                   <div className="flex items-start gap-3">
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-                      <CheckCircle2 className="h-4 w-4" />
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                     </div>
 
                     <p className="text-sm text-slate-700 dark:text-slate-300">
@@ -401,7 +356,7 @@ export const LandingPage: React.FC = () => {
 
                   <div className="flex items-start gap-3">
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-                      <CheckCircle2 className="h-4 w-4" />
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                     </div>
 
                     <p className="text-sm text-slate-700 dark:text-slate-300">
@@ -415,7 +370,7 @@ export const LandingPage: React.FC = () => {
 
                   <div className="flex items-start gap-3">
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-                      <CheckCircle2 className="h-4 w-4" />
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                     </div>
 
                     <p className="text-sm text-slate-700 dark:text-slate-300">
@@ -433,7 +388,7 @@ export const LandingPage: React.FC = () => {
                   <Link to="/signup">
                     <Button variant="primary" className="rounded-full">
                       Try An Interactive Session
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                      <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                     </Button>
                   </Link>
                 </div>
@@ -481,7 +436,7 @@ export const LandingPage: React.FC = () => {
                     {/* Candidate Answer Sample */}
                     <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-white/5 dark:bg-surface-dark-elevated">
                       <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        CANDIDATE RESPONSE
+                        CANDIDATE RESPONSE (EXAMPLE)
                       </div>
 
                       <p className="mt-2 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
@@ -499,12 +454,12 @@ export const LandingPage: React.FC = () => {
 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-xs font-bold text-brand-700 dark:text-brand-300">
-                          <Sparkles className="h-4 w-4" />
-                          ADAPTIVE AI EVALUATION
+                          <Sparkles className="h-4 w-4" aria-hidden="true" />
+                          ADAPTIVE AI EVALUATION (SAMPLE)
                         </div>
 
                         <span className="text-xs font-black text-brand-600 dark:text-brand-400">
-                          Overall: 94 / 100
+                          Overall Score: Good
                         </span>
                       </div>
 
@@ -515,7 +470,7 @@ export const LandingPage: React.FC = () => {
                             Technical Depth
                           </p>
                           <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            96%
+                            High
                           </p>
                         </div>
 
@@ -524,7 +479,7 @@ export const LandingPage: React.FC = () => {
                             Architecture
                           </p>
                           <p className="text-xs font-bold text-brand-600 dark:text-brand-400">
-                            94%
+                            High
                           </p>
                         </div>
 
@@ -533,7 +488,7 @@ export const LandingPage: React.FC = () => {
                             Clarity
                           </p>
                           <p className="text-xs font-bold text-slate-900 dark:text-white">
-                            92%
+                            Good
                           </p>
                         </div>
 
@@ -661,12 +616,15 @@ export const LandingPage: React.FC = () => {
                       type="button"
                       onClick={() => toggleFaq(index)}
                       className="flex w-full items-center justify-between p-6 text-left"
+                      aria-expanded={isOpen}
+                      aria-controls={`faq-answer-${index}`}
                     >
                       <span className="text-base font-bold text-slate-900 dark:text-white">
                         {faq.question}
                       </span>
 
                       <ChevronDown
+                        aria-hidden="true"
                         className={`h-5 w-5 text-slate-400 transition-transform duration-200 ${
                           isOpen ? 'rotate-180 text-brand-600' : ''
                         }`}
@@ -676,6 +634,7 @@ export const LandingPage: React.FC = () => {
                     <AnimatePresence>
                       {isOpen && (
                         <motion.div
+                          id={`faq-answer-${index}`}
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
@@ -715,7 +674,7 @@ export const LandingPage: React.FC = () => {
                 </h2>
 
                 <p className="mx-auto mt-5 max-w-xl text-base text-red-50 sm:text-lg">
-                  Join thousands of software engineers practicing with adaptive
+                  Join software engineers practicing with adaptive
                   AI before stepping into high-stakes interviews.
                 </p>
 
@@ -727,7 +686,7 @@ export const LandingPage: React.FC = () => {
                       className="rounded-full bg-white px-9 py-4 text-base font-bold text-red-600 shadow-xl transition-all hover:-translate-y-0.5 hover:bg-red-50"
                     >
                       Start Free Practice Now
-                      <ArrowRight className="ml-2 h-5 w-5" />
+                      <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
                     </Button>
                   </Link>
 

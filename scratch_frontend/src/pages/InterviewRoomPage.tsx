@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import {
-  Mic,
+
   Clock,
   Send,
   CheckCircle2,
@@ -74,6 +74,9 @@ export const InterviewRoomPage: React.FC = () => {
         setTotalQuestions(state.maxQuestions || 5);
         setRoleTitle(state.roleTitle || 'Engineer');
         setIsInitializing(false);
+
+        // Clear state so reload doesn't reuse the initial state
+        navigate(location.pathname, { replace: true, state: null });
         return;
       }
 
@@ -118,27 +121,50 @@ export const InterviewRoomPage: React.FC = () => {
     }
 
     initializeInterview();
-  }, [sessionId, location.state, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, location.state, location.pathname, navigate]);
 
   const currentQuestion = questions[currentQuestionIndex];
 
   // ============================================================
-  // TIMER
+  // TIMER (Persisted in sessionStorage)
   // ============================================================
 
   useEffect(() => {
+    if (!currentQuestion || !sessionId) return;
+    const storageKey = `interview_timer_${sessionId}_q_${currentQuestion.number}`;
+    const savedTime = sessionStorage.getItem(storageKey);
+
+    // Syncing timer state from sessionStorage (external system) — setState in effect is intentional here.
+    // eslint-disable-next-line react/set-state-in-effect
+    if (savedTime !== null) {
+      setTimeLeftSeconds(parseInt(savedTime, 10));
+    } else {
+      setTimeLeftSeconds(180);
+      sessionStorage.setItem(storageKey, '180');
+    }
+  }, [currentQuestion?.number, currentQuestion, sessionId]);
+
+  useEffect(() => {
+    if (!currentQuestion || !sessionId) return;
+    const storageKey = `interview_timer_${sessionId}_q_${currentQuestion.number}`;
+
     const timer = setInterval(() => {
-      setTimeLeftSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+      setTimeLeftSeconds((prev) => {
+        const next = prev > 0 ? prev - 1 : 0;
+        sessionStorage.setItem(storageKey, next.toString());
+        return next;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentQuestionIndex]);
+  }, [currentQuestion?.number, currentQuestion, sessionId]);
 
   // ============================================================
   // SUBMIT ANSWER
   // ============================================================
 
-  const handleSubmitAnswer = async (autoSubmit: boolean = false) => {
+  const handleSubmitAnswer = useCallback(async (autoSubmit: boolean = false) => {
     if (!autoSubmit && !userAnswerText.trim()) {
       addToast(
         'warning',
@@ -231,7 +257,7 @@ export const InterviewRoomPage: React.FC = () => {
         'Could not evaluate answer. Please retry.'
       );
     }
-  };
+  }, [sessionId, userAnswerText, submissionPhase, currentQuestionIndex, addToast]);
 
   // ============================================================
   // CONTINUE TO NEXT QUESTION
@@ -268,17 +294,43 @@ export const InterviewRoomPage: React.FC = () => {
   };
 
   // ============================================================
-  // AUTO SUBMIT ON TIMEOUT
+  // AUTO SUBMIT ON TIMEOUT & BEFOREUNLOAD
   // ============================================================
+  const [hasWarnedTimeout, setHasWarnedTimeout] = useState(false);
 
   useEffect(() => {
-    if (
-      timeLeftSeconds === 0 &&
-      submissionPhase === 'idle'
-    ) {
-      handleSubmitAnswer(true);
+    if (timeLeftSeconds === 0 && submissionPhase === 'idle' && !hasWarnedTimeout) {
+      if (!userAnswerText.trim()) {
+        addToast(
+          'warning',
+          'Time is up!',
+          'Please wrap up your thoughts and submit your answer.'
+        );
+        // Updating derived UI flag in response to external timer — setState in effect is intentional.
+        // eslint-disable-next-line react/set-state-in-effect
+        setHasWarnedTimeout(true);
+      } else {
+        handleSubmitAnswer(true);
+      }
     }
-  }, [timeLeftSeconds, submissionPhase]);
+  }, [timeLeftSeconds, submissionPhase, userAnswerText, hasWarnedTimeout, addToast, handleSubmitAnswer]);
+
+  useEffect(() => {
+    // Resetting per-question flag when question changes — setState in effect is intentional.
+    // eslint-disable-next-line react/set-state-in-effect
+    setHasWarnedTimeout(false);
+  }, [currentQuestion?.number]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (userAnswerText.trim() && submissionPhase === 'idle') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [userAnswerText, submissionPhase]);
 
   // ============================================================
   // TIMER FORMAT
@@ -297,7 +349,7 @@ export const InterviewRoomPage: React.FC = () => {
 
   if (isInitializing) {
     return (
-      <PageWrapper className="flex items-center justify-center min-h-[50vh]">
+      <PageWrapper className="flex items-center justify-center min-h-[100dvh]">
         <div className="flex flex-col items-center text-center space-y-4">
           <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
 
@@ -315,7 +367,7 @@ export const InterviewRoomPage: React.FC = () => {
 
   if (errorMsg) {
     return (
-      <PageWrapper className="flex items-center justify-center min-h-[50vh]">
+      <PageWrapper className="flex items-center justify-center min-h-[100dvh]">
         <div className="flex flex-col items-center text-center space-y-4 max-w-sm">
           <AlertTriangle className="w-10 h-10 text-red-500" />
 
@@ -343,8 +395,8 @@ export const InterviewRoomPage: React.FC = () => {
   // ============================================================
 
   return (
-    <PageWrapper className="h-[calc(100vh-74px)] max-w-none overflow-hidden px-4 py-3 lg:px-6 lg:py-4">
-      <div className="h-full flex flex-col gap-3 min-h-0">
+    <PageWrapper className="min-h-[100dvh] max-w-none flex flex-col px-4 py-3 lg:px-6 lg:py-4">
+      <div className="flex-1 flex flex-col gap-3 min-h-0">
 
         {/* ======================================================
             INTERVIEW HEADER
@@ -378,7 +430,7 @@ export const InterviewRoomPage: React.FC = () => {
 
             {/* Question counter */}
             <div className="text-xs sm:text-sm font-black text-slate-900 dark:text-white px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20">
-              Q {currentQuestionIndex + 1}/{totalQuestions}
+              Q {currentQuestion?.number || (currentQuestionIndex + 1)} (up to {totalQuestions})
             </div>
 
           </div>
@@ -393,7 +445,7 @@ export const InterviewRoomPage: React.FC = () => {
 
           <motion.div
             animate={{
-              width: `${((currentQuestionIndex + 1) /
+              width: `${((currentQuestion?.number || 1) /
                 totalQuestions) *
                 100
                 }%`,
@@ -426,7 +478,7 @@ export const InterviewRoomPage: React.FC = () => {
             <div className="mb-4 shrink-0">
 
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Question #{currentQuestionIndex + 1}
+                Question #{currentQuestion?.number || (currentQuestionIndex + 1)}
               </span>
 
             </div>
@@ -467,17 +519,6 @@ export const InterviewRoomPage: React.FC = () => {
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Your Answer
                 </label>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled
-                  title="Voice input coming soon"
-                  className="text-xs text-slate-400 cursor-not-allowed opacity-60"
-                >
-                  <Mic className="w-3.5 h-3.5 mr-1" />
-                  Voice (Coming Soon)
-                </Button>
 
               </div>
 
@@ -626,7 +667,7 @@ export const InterviewRoomPage: React.FC = () => {
 
                       </div>
 
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-4" aria-live="polite">
 
                         <p className="flex-1 min-w-0 text-sm leading-6 text-slate-800 dark:text-slate-100 whitespace-normal break-words">
                           {interviewerFeedback ||
@@ -677,7 +718,16 @@ export const InterviewRoomPage: React.FC = () => {
                   opacity: 1,
                   scale: 1,
                 }}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="completion-title"
+                aria-describedby="completion-description"
                 className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                  }
+                }}
               >
 
                 <Card className="w-full max-w-md p-8 text-center space-y-6 shadow-2xl glass-panel-light dark:glass-panel-dark border border-slate-200 dark:border-border-dark">
@@ -688,11 +738,11 @@ export const InterviewRoomPage: React.FC = () => {
 
                   <div>
 
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                    <h3 id="completion-title" className="text-2xl font-black text-slate-900 dark:text-white">
                       Interview Completed ✓
                     </h3>
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                    <p id="completion-description" className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                       Interview complete! AI MOCKORA has completed your adaptive evaluation.
                     </p>
 
@@ -712,6 +762,7 @@ export const InterviewRoomPage: React.FC = () => {
 
                   <Button
                     size="lg"
+                    autoFocus
                     onClick={() =>
                       navigate(
                         `/report/${sessionId}`,

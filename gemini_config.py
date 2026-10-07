@@ -10,6 +10,28 @@ from google.genai import types
 
 logging.getLogger("google_genai").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
+latency_file = open("latency_metrics.log", "a")
+def log_latency(msg, *args):
+    formatted = msg % args
+    logger.info(formatted)
+    latency_file.write(formatted + "\n")
+    latency_file.flush()
+
+# ---------------------------------------------------------------------------
+# Per-key client cache — avoids reconstructing genai.Client on every call.
+# Keys never change at runtime so a plain module-level dict is safe.
+# ---------------------------------------------------------------------------
+_client_cache: dict[str, genai.Client] = {}
+
+# Request timeout in seconds (configurable via env; 0 = no timeout).
+_TIMEOUT_SECONDS: float = float(os.environ.get("GEMINI_REQUEST_TIMEOUT_SECONDS", "60"))
+
+
+def _get_client(api_key: str) -> genai.Client:
+    """Return a cached genai.Client for the given API key."""
+    if api_key not in _client_cache:
+        _client_cache[api_key] = genai.Client(api_key=api_key)
+    return _client_cache[api_key]
 
 
 def get_api_keys() -> list[tuple[str, str]]:
@@ -82,10 +104,17 @@ def call_gemini(
     user_prompt: str,
     *,
     max_output_tokens: int = 1200,
+    temperature: float = 1.0,
+    operation: str = "gemini_call",
 ) -> str:
     """
     Shared Gemini text call with key/model fallback and 503 retries.
     Returns raw response text. Does not parse JSON.
+
+    Args:
+        temperature: Sampling temperature. Use 0.2 for evaluation/parsing
+                     calls where determinism matters; default 1.0 for
+                     question generation where creativity is desirable.
     """
     api_key_entries = get_api_keys()
     if not api_key_entries:
@@ -101,28 +130,50 @@ def call_gemini(
         all_keys_quota_failed = True
 
         for key_label, api_key in api_key_entries:
-            client = genai.Client(api_key=api_key)
+            # Reuse a cached client for this key — avoids re-creating on every call.
+            client = _get_client(api_key)
+
+            # Build config once per key (timeout is fixed for the session).
+            http_opts = (
+                types.HttpOptions(timeout=int(_TIMEOUT_SECONDS * 1000))
+                if _TIMEOUT_SECONDS > 0
+                else None
+            )
+            gen_config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+                response_mime_type="application/json",
+                http_options=http_opts,
+            )
 
             for attempt in range(1, max_retries_503 + 1):
+                _t0 = time.monotonic()
                 try:
                     logger.info(
-                        "Gemini request model=%s key=%s attempt=%s/%s",
-                        model, key_label, attempt, max_retries_503,
+                        "Gemini request model=%s key=%s attempt=%s/%s timeout=%.0fs",
+                        model, key_label, attempt, max_retries_503, _TIMEOUT_SECONDS,
                     )
                     response = client.models.generate_content(
                         model=model,
                         contents=user_prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_prompt,
-                            max_output_tokens=max_output_tokens,
-                            response_mime_type="application/json",
-                        ),
+                        config=gen_config,
                     )
+                    _dur = time.monotonic() - _t0
                     logger.info("Gemini success model=%s key=%s", model, key_label)
+                    log_latency(
+                        "[LATENCY] gemini op=%s model=%s duration=%.3fs status=ok",
+                        operation, model, _dur,
+                    )
                     return response.text
 
                 except Exception as exc:
                     error_text = str(exc)
+                    _dur = time.monotonic() - _t0
+                    log_latency(
+                        "[LATENCY] gemini op=%s model=%s duration=%.3fs status=error",
+                        operation, model, _dur,
+                    )
 
                     if _is_not_found_error(error_text):
                         logger.warning(
@@ -193,8 +244,17 @@ def call_gemini_json(
     *,
     max_output_tokens: int = 1200,
     parse_attempts: int = 2,
+    temperature: float = 1.0,
+    operation: str = "gemini_call",
 ) -> dict[str, Any]:
-    """Call Gemini and parse a JSON object. Retries parse_attempts times."""
+    """Call Gemini and parse a JSON object. Retries parse_attempts times.
+
+    Args:
+        temperature: Passed through to call_gemini. Use 0.2 for
+                     deterministic evaluation/parsing; default 1.0
+                     for creative question generation.
+        operation: Short label included in [LATENCY] logs.
+    """
     last_error: Exception | None = None
     raw_response = ""
     for attempt in range(1, parse_attempts + 1):
@@ -202,6 +262,8 @@ def call_gemini_json(
             system_prompt,
             user_prompt,
             max_output_tokens=max_output_tokens,
+            temperature=temperature,
+            operation=operation,
         )
         try:
             parsed = json.loads(strip_json_fences(raw_response))
@@ -218,3 +280,4 @@ def call_gemini_json(
         "Gemini returned invalid JSON.\n"
         f"Raw response:\n{raw_response}"
     ) from last_error
+

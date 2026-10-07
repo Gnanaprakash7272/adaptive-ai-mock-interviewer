@@ -1,0 +1,3 @@
+BEGIN;
+ALTER TABLE "public"."password_reset_otps" ENABLE ROW LEVEL SECURITY;
+COMMIT;

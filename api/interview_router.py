@@ -12,13 +12,22 @@ Endpoints:
 """
 
 import logging
+import time
 import uuid
+import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+latency_file = open("latency_metrics.log", "a")
+def log_latency(msg, *args):
+    formatted = msg % args
+    logger.info(formatted)
+    latency_file.write(formatted + "\n")
+    latency_file.flush()
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from api.auth import UserInfo, get_current_user
+from api.auth import UserInfo, get_current_user, limiter
 from langgraph.types import Command
 from langgraph_workflow.interview_graph import interview_graph
 import api.interview_repository as repo
@@ -236,20 +245,26 @@ def start_interview(
 # =============================================================================
 
 @router.post("/{interview_id}/answer", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
 def answer_question(
     interview_id: str,
-    request: AnswerRequest,
+    request: Request,
+    body: AnswerRequest,
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Submit the candidate's answer and continue the interview.
     """
-    answer_text = request.answer.strip()
+    answer_text = body.answer.strip()
     if not answer_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Answer cannot be empty or whitespace only.",
         )
+
+    # --- Stage A: request entry ---
+    _t_start = time.monotonic()
+    log_latency("[LATENCY] interview_answer start interview_id=%s", interview_id)
 
     # --- Parse interview_id once at the top ---
     try:
@@ -260,8 +275,13 @@ def answer_question(
             detail="Invalid interview_id format. Must be a numeric ID.",
         )
 
-    # --- Ownership check via durable relational record ---
+    # --- Stage B: DB ownership check ---
+    _t_b0 = time.monotonic()
     interview_row = repo.get_interview(int_id)
+    log_latency(
+        "[LATENCY] state_load interview_id=%s duration=%.3fs",
+        interview_id, time.monotonic() - _t_b0,
+    )
     if not interview_row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -280,8 +300,13 @@ def answer_question(
             detail="Interview is already completed.",
         )
 
-    # --- Look up the LangGraph thread ---
+    # --- Stage C: LangGraph checkpoint read ---
+    _t_c0 = time.monotonic()
     snap = _get_snapshot(interview_id)
+    log_latency(
+        "[LATENCY] graph_state_read interview_id=%s duration=%.3fs",
+        interview_id, time.monotonic() - _t_c0,
+    )
 
     if snap is None:
         # The relational record may still be available even when the workflow
@@ -310,10 +335,10 @@ def answer_question(
             detail="Interview is already completed.",
         )
 
-    if "wait_for_answer" in snap.next:
+    if "process_answer" in snap.next:
         # Normal flow: graph is paused waiting for an answer
         invoke_input = Command(resume=answer_text)
-    elif set(snap.next).intersection({"evaluate_answer", "adaptive_decision", "generate_final_report", "generate_question"}):
+    elif set(snap.next).intersection({"generate_final_report", "generate_question"}):
         # Recovery flow: The graph previously consumed the answer but crashed during evaluation.
         # We can just resume the graph execution (it already has the answer in its state).
         invoke_input = None
@@ -323,7 +348,8 @@ def answer_question(
             detail=f"Interview is not currently waiting for an answer. (State: {snap.next})",
         )
 
-    # --- Identify the current question_id ---
+    # --- Stage D: DB question lookup + answer persist ---
+    _t_d0 = time.monotonic()
     try:
         db_questions = repo.get_interview_questions(int_id)
         if not db_questions:
@@ -363,9 +389,15 @@ def answer_question(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to persist answer: {exc}",
             )
+    log_latency(
+        "[LATENCY] db_question_and_answer_persist interview_id=%s duration=%.3fs",
+        interview_id, time.monotonic() - _t_d0,
+    )
 
     config = {"configurable": {"thread_id": interview_id}}
 
+    # --- Stage E: LangGraph invoke (eval + adaptive + question gen) ---
+    _t_e0 = time.monotonic()
     try:
         interview_graph.invoke(invoke_input, config)
     except Exception as exc:
@@ -374,8 +406,18 @@ def answer_question(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process your answer. Please try again.",
         )
+    log_latency(
+        "[LATENCY] langgraph_invoke interview_id=%s duration=%.3fs",
+        interview_id, time.monotonic() - _t_e0,
+    )
 
+    # --- Stage F: snapshot read-back ---
+    _t_f0 = time.monotonic()
     new_snap = _get_snapshot(interview_id)
+    log_latency(
+        "[LATENCY] graph_state_read_back interview_id=%s duration=%.3fs",
+        interview_id, time.monotonic() - _t_f0,
+    )
     if new_snap is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -384,7 +426,8 @@ def answer_question(
 
     new_values = new_snap.values
 
-    # --- Persist the results of this turn ---
+    # --- Stage G: DB result persistence (eval, decision, state, next question) ---
+    _t_g0 = time.monotonic()
     history = new_values.get("interview_history", [])
     if history:
         last_turn = history[-1]
@@ -392,56 +435,61 @@ def answer_question(
         decision = last_turn.get("adaptive_decision")
 
         try:
+            _t_ts = time.monotonic()
+            
+            # Prepare arguments for the transaction
+            kwargs = {
+                "answer_id": answer_id,
+                "interview_id": int_id,
+                "current_topic": new_values.get("current_topic"),
+                "current_difficulty": new_values.get("current_difficulty"),
+                "question_count": new_values.get("question_count"),
+                "max_questions": new_values.get("max_questions"),
+                "status": "completed" if new_values.get("is_finished") else "in_progress",
+            }
+            
             if evaluation:
-                eval_row = repo.create_evaluation(
-                    answer_id=answer_id,
-                    score=evaluation.get("score"),
-                    correctness=evaluation.get("correctness"),
-                    completeness=evaluation.get("completeness"),
-                    technical_depth=evaluation.get("technical_depth"),
-                    confidence=evaluation.get("confidence"),
-                    missing_concepts=evaluation.get("missing_concepts"),
-                    feedback=evaluation.get("feedback"),
-                    needs_followup=evaluation.get("needs_followup")
-                )
-                eval_id = eval_row["evaluation_id"]
-
+                kwargs.update({
+                    "score": evaluation.get("score"),
+                    "correctness": evaluation.get("correctness"),
+                    "completeness": evaluation.get("completeness"),
+                    "technical_depth": evaluation.get("technical_depth"),
+                    "confidence": evaluation.get("confidence"),
+                    "missing_concepts": evaluation.get("missing_concepts"),
+                    "feedback": evaluation.get("feedback"),
+                    "needs_followup": evaluation.get("needs_followup")
+                })
+                
                 if decision:
-                    repo.create_adaptive_decision(
-                        evaluation_id=eval_id,
-                        next_action=decision.get("next_action"),
-                        next_topic=decision.get("next_topic"),
-                        difficulty=decision.get("difficulty"),
-                        reason=decision.get("reason")
-                    )
-
-            repo.update_interview_state(
-                interview_id=int_id,
-                current_topic=new_values.get("current_topic"),
-                current_difficulty=new_values.get("current_difficulty"),
-                question_count=new_values.get("question_count"),
-                max_questions=new_values.get("max_questions"),
-                status="completed" if new_values.get("is_finished") else "in_progress"
-            )
-
+                    kwargs.update({
+                        "next_action": decision.get("next_action"),
+                        "next_topic": decision.get("next_topic"),
+                        "difficulty": decision.get("difficulty"),
+                        "reason": decision.get("reason")
+                    })
+                    
             if not new_values.get("is_finished"):
                 next_q = new_values.get("current_question")
                 if next_q:
-                    repo.create_question(
-                        interview_id=int_id,
-                        question_text=next_q.get("question", ""),
-                        topic=next_q.get("topic"),
-                        difficulty=next_q.get("difficulty"),
-                        question_type=next_q.get("question_type"),
-                        question_order=new_values.get("question_count"),
-                        expected_concepts=next_q.get("expected_concepts")
-                    )
+                    kwargs.update({
+                        "question_text": next_q.get("question", ""),
+                        "question_topic": next_q.get("topic"),
+                        "question_difficulty": next_q.get("difficulty"),
+                        "expected_concepts": next_q.get("expected_concepts")
+                    })
+                    
+            repo.save_interview_turn_transaction(**kwargs)
+            log_latency("[LATENCY] transactional_state_save interview_id=%s duration=%.3fs", interview_id, time.monotonic() - _t_ts)
 
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to persist turn evaluation: {exc}",
             )
+    log_latency(
+        "[LATENCY] state_save interview_id=%s duration=%.3fs",
+        interview_id, time.monotonic() - _t_g0,
+    )
 
     # --- Finished? ---
     is_finished = not new_snap.next or new_values.get("is_finished")
@@ -479,6 +527,12 @@ def answer_question(
                 int_id, report_error
             )
 
+        # --- Stage H+I: response construction + total ---
+        _t_total = time.monotonic() - _t_start
+        log_latency(
+            "[LATENCY] interview_answer interview_id=%s status=completed total=%.3fs",
+            interview_id, _t_total,
+        )
         return {
             "success": True,
             "status": "completed",
@@ -488,6 +542,11 @@ def answer_question(
         }
 
     # --- Another question is ready ---
+    _t_total = time.monotonic() - _t_start
+    log_latency(
+        "[LATENCY] interview_answer interview_id=%s status=continuing total=%.3fs",
+        interview_id, _t_total,
+    )
     return {
         "success": True,
         "status": "waiting_for_answer",
@@ -585,7 +644,32 @@ def get_interview_report(
     if not report_row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found for this interview")
 
+    breakdown = repo.get_interview_breakdown(int_id)
+    questions = []
+    for q in breakdown:
+        answer_text = ""
+        score = None
+        missing = []
+        answers_data = q.get("answers")
+        if answers_data:
+            ans = answers_data[0] if isinstance(answers_data, list) else answers_data
+            answer_text = ans.get("answer_text", "")
+            evals_data = ans.get("evaluations")
+            if evals_data:
+                ev = evals_data[0] if isinstance(evals_data, list) else evals_data
+                score = ev.get("score")
+                missing = ev.get("missing_concepts", [])
+                
+        questions.append({
+            "question": q.get("question_text", ""),
+            "answer": answer_text,
+            "score": score,
+            "missing_concepts": missing
+        })
+
     return {
+        "created_at": interview_row.get("created_at"),
+        "role": interview_row.get("role"),
         "overall_score": report_row.get("overall_score"),
         "strengths": report_row.get("strengths", []),
         "weaknesses": report_row.get("weaknesses", []),
@@ -595,6 +679,7 @@ def get_interview_report(
         "profile_strengths": report_row.get("profile_strengths", []),
         "interview_demonstrated_strengths": report_row.get("interview_demonstrated_strengths", []),
         "interview_knowledge_gaps": report_row.get("interview_knowledge_gaps", []),
+        "questions": questions,
     }
 
 

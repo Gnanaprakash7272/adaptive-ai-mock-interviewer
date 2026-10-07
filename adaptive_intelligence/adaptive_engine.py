@@ -30,26 +30,59 @@ def _decrease_difficulty(current_difficulty: str) -> str:
 def _get_next_topic(
     current_topic: str,
     topics_covered: list,
+    topics_visited: list,
     role_topics: list,
     candidate_topics: list,
 ):
-    covered = {
-        str(topic).strip().lower()
-        for topic in topics_covered
-    }
+    """
+    Return the next topic to ask about.
 
+    Priority:
+      1. Role topics not yet visited (in order).
+      2. Candidate topics not yet visited (in order).
+      3. Role topics not yet *covered* (i.e. may revisit a visited-but-weak topic).
+      4. Candidate topics not yet covered.
+      5. None — no fresh topic available.
+
+    `topics_visited` tracks *every* topic the engine has moved to (regardless of
+    score), so weak topics are still eventually cycled through before repeating.
+    `topics_covered` tracks topics where the candidate showed mastery (score ≥
+    TOPIC_MASTERY_SCORE), so those are truly exhausted.
+    """
+    current_lower = current_topic.strip().lower()
+    covered_lower = {str(t).strip().lower() for t in topics_covered}
+    visited_lower = {str(t).strip().lower() for t in topics_visited}
+
+    # Pass 1: unvisited role topics
     for topic in role_topics:
         normalized = str(topic).strip().lower()
-        if not normalized or normalized == current_topic.strip().lower():
+        if not normalized or normalized == current_lower:
             continue
-        if normalized not in covered:
+        if normalized not in visited_lower:
             return topic
 
+    # Pass 2: unvisited candidate topics
     for topic in candidate_topics:
         normalized = str(topic).strip().lower()
-        if not normalized or normalized == current_topic.strip().lower():
+        if not normalized or normalized == current_lower:
             continue
-        if normalized not in covered:
+        if normalized not in visited_lower:
+            return topic
+
+    # Pass 3: revisit a role topic that was visited but not mastered
+    for topic in role_topics:
+        normalized = str(topic).strip().lower()
+        if not normalized or normalized == current_lower:
+            continue
+        if normalized not in covered_lower:
+            return topic
+
+    # Pass 4: revisit a candidate topic that was visited but not mastered
+    for topic in candidate_topics:
+        normalized = str(topic).strip().lower()
+        if not normalized or normalized == current_lower:
+            continue
+        if normalized not in covered_lower:
             return topic
 
     return None
@@ -114,7 +147,29 @@ def decide_next_step(
     followups_on_topic: int = 0,
     max_followups: int = MAX_FOLLOWUPS_PER_TOPIC,
     previous_action: str = "",
+    topics_visited: list | None = None,
 ) -> dict:
+    """
+    Decide the next interview action given the evaluation of the current answer.
+
+    Args:
+        evaluation:          Dict with score, correctness, technical_depth,
+                             completeness, missing_concepts, needs_followup.
+        current_topic:       The topic that was just asked about.
+        current_difficulty:  "easy" | "medium" | "hard"
+        topics_covered:      Topics where the candidate demonstrated mastery.
+        role_topics:         Topics derived from the target role.
+        candidate_topics:    Topics derived from the candidate profile.
+        followups_on_topic:  Number of follow-ups already issued on this topic.
+        max_followups:       Maximum follow-ups allowed per topic.
+        previous_action:     The last engine action (e.g. "follow_up").
+        topics_visited:      Every topic the engine has moved to so far.
+                             Defaults to topics_covered when not supplied
+                             (backward-compatible).
+
+    Returns:
+        dict with keys: next_action, next_topic, difficulty, reason.
+    """
     if not isinstance(evaluation, dict):
         raise ValueError("evaluation must be a dictionary.")
 
@@ -135,6 +190,14 @@ def decide_next_step(
     if not isinstance(candidate_topics, list):
         raise ValueError("candidate_topics must be a list.")
 
+    # Backward-compatible default: if topics_visited is not passed, treat
+    # topics_covered as the visited set (old behaviour, no regression).
+    if topics_visited is None:
+        topics_visited = list(topics_covered)
+
+    if not isinstance(topics_visited, list):
+        raise ValueError("topics_visited must be a list.")
+
     can_follow = followups_on_topic < max(0, int(max_followups))
     score = _score(evaluation, "score")
     needs_followup = bool(evaluation.get("needs_followup", False))
@@ -143,12 +206,20 @@ def decide_next_step(
         next_topic = _get_next_topic(
             current_topic=current_topic,
             topics_covered=topics_covered,
+            topics_visited=topics_visited,
             role_topics=role_topics,
             candidate_topics=candidate_topics,
         )
         if next_topic:
             return _action("new_topic", next_topic, difficulty, reason)
-        return _action("harder", current_topic, current_difficulty, reason)
+        # No new topic — stay on the current topic but hold difficulty.
+        # (Previously returned "harder" which was misleading for weak candidates.)
+        return _action(
+            "same_topic",
+            current_topic,
+            current_difficulty,
+            f"{reason} No new topics available; continuing current topic.",
+        )
 
     # Failed follow-up → easier (or leave topic if already easy).
     if _failed_follow_up(evaluation, previous_action):
@@ -194,6 +265,7 @@ def decide_next_step(
         next_topic = _get_next_topic(
             current_topic=current_topic,
             topics_covered=topics_covered,
+            topics_visited=topics_visited,
             role_topics=role_topics,
             candidate_topics=candidate_topics,
         )
@@ -225,7 +297,15 @@ def decide_next_step(
             "The candidate struggled and a follow-up is not useful. Reduce difficulty.",
         )
 
-    # Moderate answer → gradually harder.
+    # Moderate answer (4-7): if no gaps, hold difficulty; if gaps, go harder gradually.
+    if not _has_missing_concepts(evaluation):
+        return _action(
+            "same_topic",
+            current_topic,
+            current_difficulty,
+            "Moderate answer with no missing concepts. Holding difficulty steady.",
+        )
+
     return _action(
         "harder",
         current_topic,

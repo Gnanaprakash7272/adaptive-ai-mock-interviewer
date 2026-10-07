@@ -8,14 +8,14 @@ This is NOT a unit test. It requires:
   1. Your FastAPI server already running:
          uv run uvicorn api.main:app --reload
   2. A real .env with valid SUPABASE_URL / SUPABASE_KEY / GEMINI_API_KEY
-  3. A real sample resume PDF on disk (path below, or set E2E_RESUME_PATH env var)
+  3. A real sample resume PDF on disk — set E2E_RESUME_PATH env var.
 
 It makes REAL calls to Gemini and REAL writes to Supabase. Every run creates
 a brand-new throwaway user (random email) so it never collides with your
 existing data, and is safe to re-run repeatedly.
 
 Run it on its own, not mixed with the rest of the mocked suite:
-    uv run pytest test_e2e_flow.py -v -s
+    uv run pytest test_e2e_flow.py -v -s -m e2e
 
 -s is important — it lets you see the print() progress output as it runs,
 since some steps (Gemini calls) can take several seconds each.
@@ -28,14 +28,14 @@ import uuid
 import requests
 import pytest
 
+pytestmark = pytest.mark.e2e   # applies to every test in this module
+
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
-DEFAULT_RESUME_PATH = os.path.join(
-    os.path.expanduser("~"),
-    "Downloads",
-    "Gnana Prakash D resume 26th aug.pdf",
-)
-RESUME_PATH = os.environ.get("E2E_RESUME_PATH", DEFAULT_RESUME_PATH)
+# Resume path MUST be provided via environment variable.
+# There is intentionally no fallback to a personal path so the test
+# fails fast with a clear message rather than picking up the wrong file.
+RESUME_PATH = os.environ.get("E2E_RESUME_PATH", "")
 
 TEST_PASSWORD = "E2ETestPass123!"
 MAX_QUESTIONS = 3          # keep small: each question = one live Gemini call

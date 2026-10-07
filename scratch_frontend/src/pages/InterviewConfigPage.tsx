@@ -17,11 +17,19 @@ export const InterviewConfigPage: React.FC = () => {
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [selectedTopic, setSelectedTopic] = useState<string>('');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('Senior');
+  const [maxQuestions, setMaxQuestions] = useState<number>(10);
+
   useEffect(() => {
     if (roleId) {
       apiService.getRoleById(roleId).then((data) => {
         if (data) {
           setRole(data);
+          // Auto-select difficulty based on role if available
+          if (data.difficulty) {
+            setSelectedDifficulty(data.difficulty);
+          }
         }
       });
     }
@@ -31,19 +39,25 @@ export const InterviewConfigPage: React.FC = () => {
       .then((data) => {
         if (data) setProfile(data);
       })
-      .catch((err) => {
-        console.error("Failed to fetch profile", err);
+      .catch((err: any) => {
+        if (err.status === 404) {
+          navigate('/resume/upload', { replace: true });
+        } else {
+          console.error("Failed to fetch profile", err);
+        }
       });
-  }, [roleId]);
+  }, [roleId, navigate]);
 
   const handleStartInterview = async () => {
     setLoading(true);
     try {
       const response = await apiService.startInterview({
         role: role?.title || 'Senior Engineer',
-        // Internal safety limit; not exposed to the user as per adaptive AI requirements
-        max_questions: 10, 
-      });
+        role_id: role?.id,
+        topic: selectedTopic || undefined,
+        difficulty: selectedDifficulty || undefined,
+        max_questions: maxQuestions, 
+      } as any);
 
       addToast('success', 'Interview Session Initialized!', `First question ready.`);
       setLoading(false);
@@ -109,8 +123,6 @@ export const InterviewConfigPage: React.FC = () => {
               Every question is selected based on your previous response. 
               The interviewer can change difficulty, ask follow-up questions, 
               explore weak areas, or move to a new topic automatically. 
-              <br/><br/>
-              <span className="font-medium text-slate-700 dark:text-slate-200">Interview length is determined dynamically based on your responses and topic coverage.</span>
             </p>
 
             <ul className="space-y-2.5 relative z-10">
@@ -141,18 +153,61 @@ export const InterviewConfigPage: React.FC = () => {
             </p>
 
             {profile && profile.potential_interview_topics && profile.potential_interview_topics.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {profile.potential_interview_topics.map((topic, i) => (
-                  <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-50 dark:bg-surface-dark-elevated text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-white/5">
-                    {topic}
-                  </span>
-                ))}
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Select Core Focus Topic
+                  </label>
+                  <select
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900 text-sm focus:border-brand-500 outline-none text-slate-800 dark:text-slate-200"
+                    value={selectedTopic}
+                    onChange={(e) => setSelectedTopic(e.target.value)}
+                  >
+                    <option value="">Auto (Let AI decide based on role)</option>
+                    {profile.potential_interview_topics.map((topic, i) => (
+                      <option key={i} value={topic}>{topic}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             ) : (
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-surface-dark-elevated text-xs text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-white/5 text-center">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-surface-dark-elevated text-xs text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-white/5 text-center mb-4">
                 Your interview will begin with general role-relevant topics.
               </div>
             )}
+            
+            <div className="flex flex-col gap-4 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Interview Difficulty
+                </label>
+                <select
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900 text-sm focus:border-brand-500 outline-none text-slate-800 dark:text-slate-200"
+                  value={selectedDifficulty}
+                  onChange={(e) => setSelectedDifficulty(e.target.value)}
+                >
+                  <option value="Junior">Junior</option>
+                  <option value="Mid-Level">Mid-Level</option>
+                  <option value="Senior">Senior</option>
+                  <option value="Staff/Architect">Staff / Architect</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Number of Questions
+                </label>
+                <select
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900 text-sm focus:border-brand-500 outline-none text-slate-800 dark:text-slate-200"
+                  value={maxQuestions}
+                  onChange={(e) => setMaxQuestions(parseInt(e.target.value) || 10)}
+                >
+                  <option value={5}>5 Questions (Short)</option>
+                  <option value={10}>10 Questions (Standard)</option>
+                  <option value={15}>15 Questions (Long)</option>
+                </select>
+              </div>
+            </div>
           </Card>
 
           {/* How It Works */}
@@ -191,7 +246,7 @@ export const InterviewConfigPage: React.FC = () => {
         <Button 
            size="lg" 
            onClick={handleStartInterview} 
-           disabled={loading} 
+           disabled={loading || !role} 
            className="w-full sm:w-auto shadow-xl shadow-brand-500/25 group px-8"
         >
           {loading ? (

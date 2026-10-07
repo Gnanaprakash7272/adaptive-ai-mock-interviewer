@@ -1,5 +1,15 @@
+import logging
 from typing import Dict, Any, Optional
 from api.db import supabase
+
+log = logging.getLogger(__name__)
+
+
+def _safe_str(value: Any) -> str:
+    """Return string representation of value, returning '' for None."""
+    if value is None:
+        return ""
+    return str(value)
 
 def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
     """Saves a candidate profile (nested dict) into relational tables and returns resume_id."""
@@ -84,8 +94,7 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
             try:
                 supabase.table("education").insert(ed_rows).execute()
             except Exception as e:
-                import logging
-                logging.error(f"Failed to insert education: {e}")
+                raise RuntimeError(f"Failed to insert education for resume_id={resume_id}: {e}") from e
 
     # 3. Insert skills
     skills_dict = profile.get("skills", {})
@@ -102,8 +111,7 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
         try:
             supabase.table("skills").insert(skill_rows).execute()
         except Exception as e:
-            import logging
-            logging.error(f"Failed to insert skills: {e}")
+            raise RuntimeError(f"Failed to insert skills for resume_id={resume_id}: {e}") from e
 
     # 4. Insert experiences
     experience_list = profile.get("experience", [])
@@ -112,10 +120,11 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
         for exp in experience_list:
             exp_row = {
                 "resume_id": resume_id,
-                "company": str(exp.get("company", "")),
-                "role": str(exp.get("role", "")),
-                "location": str(exp.get("location", "")),
-                "responsibilities": "\\n".join(exp.get("responsibilities", [])) if isinstance(exp.get("responsibilities"), list) else str(exp.get("responsibilities", ""))
+                "company": _safe_str(exp.get("company")),
+                "role": _safe_str(exp.get("role")),
+                "location": _safe_str(exp.get("location")),
+                "responsibilities": "\n".join(exp.get("responsibilities", [])) if isinstance(exp.get("responsibilities"), list) else _safe_str(exp.get("responsibilities")),
+                "technologies": exp.get("technologies") if isinstance(exp.get("technologies"), list) else [],
             }
             # Optional dates
             if exp.get("start_date") and len(str(exp.get("start_date", ""))) >= 4:
@@ -135,9 +144,7 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
             if exp_rows:
                 supabase.table("experiences").insert(exp_rows).execute()
         except Exception as exc:
-            import logging
-            logging.error(f"Failed to insert experiences for resume_id {resume_id}: {exc}")
-            # Do NOT crash the whole app just because of date formatting
+            raise RuntimeError(f"Failed to insert experiences for resume_id={resume_id}: {exc}") from exc
 
     # 5. Insert projects and project_technologies
     projects_list = profile.get("projects", [])
@@ -145,21 +152,20 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
         try:
             p_res = supabase.table("projects").insert({
                 "resume_id": resume_id,
-                "name": str(proj.get("name", "")),
-                "description": str(proj.get("description", "")),
-                "domain": str(proj.get("domain", "")),
-                "role": str(proj.get("role", "")),
-                "duration": str(proj.get("duration", ""))
+                "name": _safe_str(proj.get("name")),
+                "description": _safe_str(proj.get("description")),
+                "domain": _safe_str(proj.get("domain")),
+                "role": _safe_str(proj.get("role")),
+                "duration": _safe_str(proj.get("duration"))
             }).execute()
             if p_res.data:
                 project_id = p_res.data[0]["project_id"]
                 techs = proj.get("technologies", [])
                 if techs:
-                    t_rows = [{"project_id": project_id, "technology": str(t)} for t in techs]
+                    t_rows = [{"project_id": project_id, "technology": _safe_str(t)} for t in techs]
                     supabase.table("project_technologies").insert(t_rows).execute()
         except Exception as exc:
-            import logging
-            logging.error(f"Failed to insert project: {exc}")
+            raise RuntimeError(f"Failed to insert project for resume_id={resume_id}: {exc}") from exc
 
     # 6. Insert certifications
     certs = profile.get("certifications", [])
@@ -176,8 +182,7 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
             if c_rows:
                 supabase.table("certifications").insert(c_rows).execute()
         except Exception as exc:
-            import logging
-            logging.error(f"Failed to insert certifications: {exc}")
+            raise RuntimeError(f"Failed to insert certifications for resume_id={resume_id}: {exc}") from exc
 
     return resume_id
 
@@ -245,9 +250,10 @@ def get_candidate_profile(user_id: int) -> Optional[Dict[str, Any]]:
             "company": ex.get("company", ""),
             "role": ex.get("role", ""),
             "location": ex.get("location", ""),
-            "start_date": str(ex.get("start_date", "")),
-            "end_date": str(ex.get("end_date", "")),
-            "responsibilities": ex.get("responsibilities", "").split("\\n") if ex.get("responsibilities") else []
+            "start_date": _safe_str(ex.get("start_date")),
+            "end_date": _safe_str(ex.get("end_date")),
+            "responsibilities": ex.get("responsibilities", "").split("\n") if ex.get("responsibilities") else [],
+            "technologies": ex.get("technologies") if isinstance(ex.get("technologies"), list) else [],
         })
 
     # Fetch projects

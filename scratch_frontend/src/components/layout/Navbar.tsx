@@ -54,16 +54,16 @@ export const Navbar: React.FC = () => {
                   {user.avatarUrl ? (
                     <img
                       src={user.avatarUrl}
-                      alt={user.name}
+                      alt={user.username}
                       className="w-7 h-7 rounded-lg object-cover ring-2 ring-brand-500/40"
                     />
                   ) : (
                     <div className="w-7 h-7 rounded-lg bg-brand-600 text-white flex items-center justify-center text-xs font-bold ring-2 ring-brand-500/40">
-                      {user.name.charAt(0).toUpperCase()}
+                      {user.username.charAt(0).toUpperCase()}
                     </div>
                   )}
                   <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 hidden sm:inline-block">
-                    {user.name.split(' ')[0]}
+                    {user.username}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                 </button>
@@ -71,7 +71,7 @@ export const Navbar: React.FC = () => {
                 {showProfileMenu && (
                   <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-surface-dark-card border border-slate-200 dark:border-border-dark shadow-2xl p-2 z-50">
                     <div className="p-3 border-b border-slate-100 dark:border-white/5 mb-1">
-                      <p className="font-bold text-xs text-slate-900 dark:text-slate-100">{user.name}</p>
+                      <p className="font-bold text-xs text-slate-900 dark:text-slate-100">{user.username}</p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
                     </div>
 

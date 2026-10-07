@@ -94,6 +94,8 @@ _ALIASES: Dict[str, str] = {
     "reactjs": "react",
     "react js": "react",
     "react.js": "react",
+    # react native is a distinct framework — must not resolve to "react"
+    "react native": "react native",
 
     # Node.js
     "node": "node.js",
@@ -186,29 +188,37 @@ def normalize_skill(raw: str) -> str:
     Normalize a raw skill string to its canonical form.
 
     Steps:
-      1. Lowercase and strip whitespace.
-      2. Check exact match in alias table.
-      3. Check token-level match (each word token against alias keys).
+      1. Lowercase and strip whitespace; collapse internal whitespace.
+      2. Strip trailing version suffixes (e.g. "3.12", "v2.0", "2024").
+      3. Check exact-phrase match in the alias table.
       4. Return canonical or cleaned original.
 
-    Examples:
-      "postgres"      → "postgresql"
-      "sklearn"       → "scikit-learn"
-      "JS"            → "javascript"
-      "PyTorch"       → "pytorch"
-      "Python 3.12"   → "python"  (token match on "python")
-    """
-    cleaned = raw.strip().lower()
-    cleaned = re.sub(r"\s+", " ", cleaned)  # collapse internal whitespace
+    Deliberately does NOT apply first-token alias matching — that caused
+    "ML Ops" → "machine learning" (only "ml" is in the table) and
+    "JavaScript" → "java" (wrong). Aliases are exact-phrase only.
 
-    # Exact alias match
+    Examples:
+      "postgres"        → "postgresql"
+      "sklearn"         → "scikit-learn"
+      "JS"              → "javascript"
+      "PyTorch"         → "pytorch"
+      "Python 3.12"     → "python"
+      "ML Ops"          → "ml ops"    (not "machine learning")
+      "react native"    → "react native"  (not "react")
+      "JavaScript"      → "javascript"    (not "java")
+    """
+    import re as _re
+
+    cleaned = raw.strip().lower()
+    cleaned = _re.sub(r"\s+", " ", cleaned)  # collapse internal whitespace
+
+    # Strip trailing version-like tokens: "3.12", "v2.0", "2024", "v3", etc.
+    # Pattern: optional "v" + digits + optional ".digits" at the end of string.
+    cleaned = _re.sub(r"\s+v?\d+(\.\d+)*$", "", cleaned).strip()
+
+    # Exact alias match (full phrase)
     if cleaned in _ALIASES:
         return _ALIASES[cleaned]
-
-    # Token alias: if the first significant word of the skill hits an alias
-    tokens = cleaned.split()
-    if tokens and tokens[0] in _ALIASES:
-        return _ALIASES[tokens[0]]
 
     # No alias → return cleaned original
     return cleaned

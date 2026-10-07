@@ -237,6 +237,85 @@ def get_answer_by_question_id(question_id: int) -> Optional[Dict[str, Any]]:
 # 5. create_evaluation
 # ---------------------------------------------------------------------------
 
+def save_interview_turn_transaction(
+    *,
+    answer_id: int,
+    interview_id: int,
+    # evaluation args
+    score: Optional[float] = None,
+    correctness: Optional[Any] = None,
+    completeness: Optional[Any] = None,
+    technical_depth: Optional[Any] = None,
+    confidence: Optional[Any] = None,
+    missing_concepts: Optional[List[str]] = None,
+    feedback: Optional[str] = None,
+    needs_followup: Optional[bool] = None,
+    # decision args
+    next_action: Optional[str] = None,
+    next_topic: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    reason: Optional[str] = None,
+    # interview args
+    current_topic: Optional[str] = None,
+    current_difficulty: Optional[str] = None,
+    question_count: Optional[int] = None,
+    max_questions: Optional[int] = None,
+    status: Optional[str] = None,
+    # question args
+    question_text: Optional[str] = None,
+    question_topic: Optional[str] = None,
+    question_difficulty: Optional[str] = None,
+    expected_concepts: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Save the evaluation, decision, interview state, and optional new question atomically using the save_interview_turn RPC.
+    """
+    payload: Dict[str, Any] = {
+        "p_answer_id": answer_id,
+        "p_interview_id": interview_id,
+        "p_score": score,
+        "p_correctness": float(correctness) if correctness is not None else None,
+        "p_completeness": float(completeness) if completeness is not None else None,
+        "p_technical_depth": int(technical_depth) if technical_depth is not None else None,
+        "p_confidence": float(confidence) if confidence is not None else None,
+        "p_missing_concepts": json.dumps(missing_concepts, ensure_ascii=False) if missing_concepts is not None else None,
+        "p_feedback": feedback,
+        "p_needs_followup": bool(needs_followup) if needs_followup is not None else None,
+        "p_next_action": next_action,
+        "p_next_topic": next_topic,
+        "p_difficulty": difficulty,
+        "p_reason": reason,
+        "p_current_topic": current_topic,
+        "p_current_difficulty": current_difficulty,
+        "p_question_count": question_count,
+        "p_max_questions": max_questions,
+        "p_status": status,
+        "p_question_text": question_text,
+        "p_question_topic": question_topic,
+        "p_question_difficulty": question_difficulty,
+        "p_expected_concepts": json.dumps(expected_concepts, ensure_ascii=False) if expected_concepts is not None else None,
+    }
+    
+    # Remove None values to use the SQL DEFAULT NULL defined in the RPC
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    try:
+        result = supabase.rpc("save_interview_turn", payload).execute()
+        if isinstance(result.data, list):
+            if not result.data:
+                raise RuntimeError("Supabase returned no rows for the operation.")
+            return result.data[0]
+        return result.data or {}
+    except Exception as exc:
+        raise RuntimeError(
+            f"save_interview_turn_transaction failed for interview_id={interview_id}: type={type(exc)} repr={repr(exc)}"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# 5b. create_evaluation
+# ---------------------------------------------------------------------------
+
 def create_evaluation(
     *,
     answer_id: int,
@@ -266,13 +345,13 @@ def create_evaluation(
     if score is not None:
         payload["score"] = score
     if correctness is not None:
-        payload["correctness"] = str(correctness)
+        payload["correctness"] = float(correctness)
     if completeness is not None:
-        payload["completeness"] = str(completeness)
+        payload["completeness"] = float(completeness)
     if technical_depth is not None:
         payload["technical_depth"] = int(technical_depth)
     if confidence is not None:
-        payload["confidence"] = str(confidence)
+        payload["confidence"] = float(confidence)
     # missing_concepts: list → JSON string (TEXT column, schema unchanged)
     if missing_concepts is not None:
         payload["missing_concepts"] = json.dumps(missing_concepts, ensure_ascii=False)
@@ -475,6 +554,29 @@ def get_interview_questions(interview_id: int) -> List[Dict[str, Any]]:
     except Exception as exc:
         raise RuntimeError(
             f"get_interview_questions failed for interview_id={interview_id}: {exc}"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# 10a. get_interview_breakdown
+# ---------------------------------------------------------------------------
+
+def get_interview_breakdown(interview_id: int) -> List[Dict[str, Any]]:
+    """
+    Fetch all questions for an interview, alongside their answers and evaluations.
+    """
+    try:
+        result = (
+            supabase.table("questions")
+            .select("*, answers(*, evaluations(*))")
+            .eq("interview_id", interview_id)
+            .order("question_order", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        raise RuntimeError(
+            f"get_interview_breakdown failed for interview_id={interview_id}: {exc}"
         ) from exc
 
 

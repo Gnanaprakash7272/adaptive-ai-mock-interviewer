@@ -1,7 +1,7 @@
 -- =============================================================================
 -- AI MOCKORA — Step 4A Schema Migration
--- File   : docs/step4_schema_migration.sql
--- Status : PREPARED — NOT EXECUTED
+-- File   : supabase/migrations/20261002000002_step4_schema_migration.sql
+-- Status : PREPARED — NOT APPLIED
 -- Author : AI MOCKORA backend team
 -- Date   : 2026-09-24
 -- =============================================================================

@@ -15,7 +15,6 @@ import { DashboardPage } from './pages/DashboardPage';
 import { RoleSelectionPage } from './pages/RoleSelectionPage';
 import { InterviewConfigPage } from './pages/InterviewConfigPage';
 import { InterviewRoomPage } from './pages/InterviewRoomPage';
-import { InterviewCompletePage } from './pages/InterviewCompletePage';
 import { ReportPage } from './pages/ReportPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -66,7 +65,6 @@ export const App: React.FC = () => {
                 <Route path="/roles" element={<ProtectedRoute><RoleSelectionPage /></ProtectedRoute>} />
                 <Route path="/interview/config/:roleId" element={<ProtectedRoute><InterviewConfigPage /></ProtectedRoute>} />
                 <Route path="/interview/room/:sessionId" element={<ProtectedRoute><InterviewRoomPage /></ProtectedRoute>} />
-                <Route path="/interview/complete/:sessionId" element={<ProtectedRoute><InterviewCompletePage /></ProtectedRoute>} />
                 <Route path="/report/:sessionId" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
                 <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

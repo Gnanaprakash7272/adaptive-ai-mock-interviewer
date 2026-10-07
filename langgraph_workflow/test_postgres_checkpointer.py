@@ -16,7 +16,12 @@ from uuid import uuid4
 
 os.environ.setdefault("GEMINI_API_KEY", "MOCK_KEY_FOR_TESTS")
 
-from langgraph.checkpoint.postgres import PostgresSaver
+try:
+    from langgraph.checkpoint.postgres import PostgresSaver
+    _PG_AVAILABLE = True
+except (ImportError, Exception):
+    PostgresSaver = None  # type: ignore
+    _PG_AVAILABLE = False
 from langgraph.types import Command
 
 from langgraph_workflow import interview_graph as graph_module
@@ -71,6 +76,7 @@ def _initial_state(interview_id: int, user_id: int, role: str) -> dict:
     }
 
 
+@unittest.skipUnless(_PG_AVAILABLE, "psycopg / PostgresSaver unavailable on this system")
 class TestPostgresCheckpointConfiguration(unittest.TestCase):
     def test_missing_database_url_has_actionable_error(self):
         with (
@@ -167,7 +173,7 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
         from langgraph.checkpoint.memory import MemorySaver
 
         graph = graph_module.build_interview_graph(checkpointer=MemorySaver())
-        self.assertIn("wait_for_answer", graph.get_graph().nodes)
+        self.assertIn("process_answer", graph.get_graph().nodes)
 
 
 @unittest.skipUnless(
@@ -228,7 +234,7 @@ class TestPostgresCheckpointPersistence(unittest.TestCase):
             )
 
             paused = first_graph.get_state(config)
-            self.assertIn("wait_for_answer", paused.next)
+            self.assertIn("process_answer", paused.next)
             self.assertEqual(paused.values["interview_id"], interview_id)
             self.assertEqual(paused.values["current_question"], FAKE_QUESTION)
             self.assertIsNotNone(first_saver.get(config))
@@ -242,7 +248,7 @@ class TestPostgresCheckpointPersistence(unittest.TestCase):
             second_graph = graph_module.build_interview_graph(checkpointer=second_saver)
 
             restored = second_graph.get_state(config)
-            self.assertIn("wait_for_answer", restored.next)
+            self.assertIn("process_answer", restored.next)
             self.assertEqual(restored.values["interview_id"], interview_id)
             self.assertEqual(restored.values["current_question"], FAKE_QUESTION)
 

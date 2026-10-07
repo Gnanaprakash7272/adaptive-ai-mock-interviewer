@@ -166,12 +166,42 @@ def _role_skill_tokens(role: dict[str, Any]) -> set[str]:
 
 
 def _item_overlaps_role(technologies: list, role_tokens: set[str]) -> bool:
+    """
+    Return True if any technology in the list matches a role skill token.
+
+    Uses whole-word (token-boundary) matching to prevent false positives like:
+      - "go"  matching "MongoDB" or "Django"
+      - "java" matching "javascript"
+
+    Matching rules (in priority order):
+      1. Exact normalised equality.
+      2. The candidate token appears as a whole word inside the role token
+         (word-boundary regex, minimum 3 chars to skip trivial tokens).
+      3. The role token appears as a whole word inside the candidate token.
+    """
+    import re as _re
+
     for tech in technologies or []:
-        if normalize_skill(str(tech)) in role_tokens:
+        cand_norm = normalize_skill(str(tech))
+        if not cand_norm:
+            continue
+
+        # Exact match
+        if cand_norm in role_tokens:
             return True
-        for role_tok in role_tokens:
-            if role_tok and role_tok in normalize_skill(str(tech)):
-                return True
+
+        # Whole-word containment (both directions), minimum 3 chars
+        if len(cand_norm) >= 3:
+            for role_tok in role_tokens:
+                if not role_tok or len(role_tok) < 3:
+                    continue
+                # cand_norm as a whole word inside role_tok
+                if _re.search(r'\b' + _re.escape(cand_norm) + r'\b', role_tok):
+                    return True
+                # role_tok as a whole word inside cand_norm
+                if _re.search(r'\b' + _re.escape(role_tok) + r'\b', cand_norm):
+                    return True
+
     return False
 
 

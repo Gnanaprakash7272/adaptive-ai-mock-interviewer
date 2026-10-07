@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from question_intellegence.question_generator import (
+from question_intelligence.question_generator import (
     build_fallback_follow_up,
     generate_question,
     is_genuine_follow_up,
@@ -80,7 +80,7 @@ class TestQuestionGenerationContext(unittest.TestCase):
             }],
         }
         with patch(
-            "question_intellegence.question_generator.call_gemini_json",
+            "question_intelligence.question_generator.call_gemini_json",
             side_effect=fake_json,
         ):
             question = generate_question(
@@ -109,7 +109,7 @@ class TestQuestionGenerationContext(unittest.TestCase):
             "evaluation": {"missing_concepts": ["cross-validation"], "feedback": "Shallow."},
         }]
         with patch(
-            "question_intellegence.question_generator.call_gemini_json",
+            "question_intelligence.question_generator.call_gemini_json",
             return_value=generic,
         ):
             result = generate_question(

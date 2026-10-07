@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -17,8 +17,7 @@ export const VerifyOTPPage: React.FC = () => {
   const email = location.state?.email;
 
   if (!email) {
-    navigate('/forgot-password');
-    return null;
+    return <Navigate to="/forgot-password" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,10 +62,15 @@ export const VerifyOTPPage: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
+            <label htmlFor="otp-input" className="sr-only">
+              One Time Code
+            </label>
             <input
+              id="otp-input"
               type="text"
               maxLength={6}
               required
+              autoComplete="one-time-code"
               placeholder="123456"
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}

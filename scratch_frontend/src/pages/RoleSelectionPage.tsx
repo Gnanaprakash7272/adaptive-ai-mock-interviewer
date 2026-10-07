@@ -25,6 +25,15 @@ import {
   X,
   SlidersHorizontal,
   ChevronRight,
+  Cloud,
+  Code,
+  Database,
+  Key,
+  LineChart,
+  Lock,
+  Monitor,
+  PieChart,
+  Shield,
 } from 'lucide-react';
 
 import { apiService } from '../services/apiService';
@@ -40,11 +49,14 @@ export const RoleSelectionPage: React.FC = () => {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
   const [loading, setLoading] = useState(true);
 
+  const canHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
+
   const [recommendedRoles, setRecommendedRoles] = useState<
     RecommendedRole[]
   >([]);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
+  const [noProfile, setNoProfile] = useState(false);
 
   /* ============================================================
      FETCH RECOMMENDED ROLES
@@ -58,15 +70,20 @@ export const RoleSelectionPage: React.FC = () => {
         const recs = await apiService.getRecommendedRoles();
 
         if (!recs || recs.length === 0) {
-          setProfileError(true);
+          setNoProfile(true);
           setRecommendedRoles([]);
         } else {
           setProfileError(false);
+          setNoProfile(false);
           setRecommendedRoles(recs.slice(0, 3));
         }
-      } catch (error) {
-        console.error('Failed to fetch recommendations:', error);
-        setProfileError(true);
+      } catch (error: any) {
+        if (error.status === 404) {
+          setNoProfile(true);
+        } else {
+          console.error('Failed to fetch recommendations:', error);
+          setProfileError(true);
+        }
         setRecommendedRoles([]);
       } finally {
         setProfileLoading(false);
@@ -81,25 +98,40 @@ export const RoleSelectionPage: React.FC = () => {
   ============================================================ */
 
   useEffect(() => {
-    const fetchRoles = async () => {
-      try {
-        setLoading(true);
+    const controller = new AbortController();
+    let isCancelled = false;
 
+    // eslint-disable-next-line react/set-state-in-effect -- intentional: sets loading state at start of async fetch
+    setLoading(true);
+
+    const handler = setTimeout(async () => {
+      try {
         const data = await apiService.getRoles(
           searchQuery,
-          selectedDifficulty
+          selectedDifficulty,
+          controller.signal
         );
 
-        setRoles(data);
-      } catch (error) {
-        console.error('Failed to fetch roles:', error);
-        setRoles([]);
+        if (!isCancelled) {
+          setRoles(data);
+        }
+      } catch (error: any) {
+        if (!isCancelled && error.name !== 'AbortError') {
+          console.error('Failed to fetch roles:', error);
+          setRoles([]);
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
-    };
+    }, 300);
 
-    fetchRoles();
+    return () => {
+      isCancelled = true;
+      clearTimeout(handler);
+      controller.abort();
+    };
   }, [searchQuery, selectedDifficulty]);
 
   /* ============================================================
@@ -120,26 +152,22 @@ export const RoleSelectionPage: React.FC = () => {
 
   const getRoleIcon = (iconName: string) => {
     switch (iconName) {
-      case 'Layout':
-        return <Layout className="h-5 w-5 text-brand-500" />;
-
-      case 'Cpu':
-        return <Cpu className="h-5 w-5 text-brand-500" />;
-
-      case 'Layers':
-        return <Layers className="h-5 w-5 text-emerald-500" />;
-
-      case 'Brain':
-        return <Brain className="h-5 w-5 text-brand-500" />;
-
-      case 'Server':
-        return <Server className="h-5 w-5 text-amber-500" />;
-
-      case 'Smartphone':
-        return <Smartphone className="h-5 w-5 text-rose-500" />;
-
-      default:
-        return <Sparkles className="h-5 w-5 text-brand-500" />;
+      case 'Layout': return <Layout className="h-5 w-5 text-brand-500" />;
+      case 'Cpu': return <Cpu className="h-5 w-5 text-brand-500" />;
+      case 'Layers': return <Layers className="h-5 w-5 text-emerald-500" />;
+      case 'Brain': return <Brain className="h-5 w-5 text-brand-500" />;
+      case 'Server': return <Server className="h-5 w-5 text-amber-500" />;
+      case 'Smartphone': return <Smartphone className="h-5 w-5 text-rose-500" />;
+      case 'Cloud': return <Cloud className="h-5 w-5 text-sky-500" />;
+      case 'Code': return <Code className="h-5 w-5 text-indigo-500" />;
+      case 'Database': return <Database className="h-5 w-5 text-emerald-500" />;
+      case 'Key': return <Key className="h-5 w-5 text-amber-500" />;
+      case 'LineChart': return <LineChart className="h-5 w-5 text-blue-500" />;
+      case 'Lock': return <Lock className="h-5 w-5 text-rose-500" />;
+      case 'Monitor': return <Monitor className="h-5 w-5 text-slate-500" />;
+      case 'PieChart': return <PieChart className="h-5 w-5 text-fuchsia-500" />;
+      case 'Shield': return <Shield className="h-5 w-5 text-red-500" />;
+      default: return <Sparkles className="h-5 w-5 text-brand-500" />;
     }
   };
 
@@ -307,8 +335,8 @@ export const RoleSelectionPage: React.FC = () => {
           <div className="max-w-3xl">
 
             <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700 dark:border-brand-900/40 dark:bg-brand-950/30 dark:text-brand-400">
-              <Sparkles className="h-3 w-3" />
-              AI-Powered Role Matching
+              <Target className="h-3 w-3" />
+              Skill-based Role Matching
             </div>
 
             <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl lg:text-4xl">
@@ -433,7 +461,37 @@ export const RoleSelectionPage: React.FC = () => {
 
             </div>
 
-          ) : profileError || recommendedRoles.length === 0 ? (
+          ) : profileError ? (
+
+            <Card className="border-red-100 bg-red-50/50 p-6 dark:border-red-900/30 dark:bg-red-950/20">
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+                <div className="flex items-start gap-3">
+
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                    <AlertCircle className="h-5 w-5" />
+                  </div>
+
+                  <div>
+
+                    <p className="font-bold text-slate-900 dark:text-white">
+                      Request failed
+                    </p>
+
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                      We couldn't load your recommended roles right now.
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </Card>
+
+          ) : noProfile || recommendedRoles.length === 0 ? (
 
             <Card className="border-brand-100 bg-brand-50/50 p-6 dark:border-brand-900/30 dark:bg-brand-950/20">
 
@@ -495,7 +553,7 @@ export const RoleSelectionPage: React.FC = () => {
 
                     <Card
                       hoverEffect
-                      tiltOnHover
+                      tiltOnHover={canHover}
                       className="relative flex h-full flex-col overflow-hidden border-2 border-amber-500/20 p-6"
                     >
 
@@ -792,7 +850,7 @@ export const RoleSelectionPage: React.FC = () => {
 
                 <Card
                   hoverEffect
-                  tiltOnHover
+                  tiltOnHover={canHover}
                   className="group flex h-full flex-col justify-between p-6"
                 >
 

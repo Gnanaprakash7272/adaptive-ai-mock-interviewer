@@ -5,20 +5,20 @@ LangGraph workflow for the AI MOCKORA interview session.
 
 Graph Flow:
     START
-      ↓
-    create_interview_plan       — validates + initialises session state
-      ↓
-    generate_question           — calls question_generator, commits question to state
-      ↓
-    wait_for_answer             — INTERRUPTS here, waits for candidate answer
-      ↓  (resumed with Command(resume=<answer_string>))
-    evaluate_answer             — calls answer_evaluator
-      ↓
-    adaptive_decision           — calls adaptive_engine, updates topic/difficulty
-      ↓
+      â†“
+    create_interview_plan       â€” validates + initialises session state
+      â†“
+    generate_question           â€” calls question_generator, commits question to state
+      â†“
+    wait_for_answer             â€” INTERRUPTS here, waits for candidate answer
+      â†“  (resumed with Command(resume=<answer_string>))
+    evaluate_answer             â€” calls answer_evaluator
+      â†“
+    adaptive_decision           â€” calls adaptive_engine, updates topic/difficulty
+      â†“
     should_continue (router)
-        ├── "continue"  → generate_question          (loop)
-        └── "finish"    → generate_final_report → END
+        â”œâ”€â”€ "continue"  â†’ generate_question          (loop)
+        â””â”€â”€ "finish"    â†’ generate_final_report â†’ END
 
 Design rules:
     - NO Supabase calls.
@@ -60,21 +60,33 @@ from dotenv import load_dotenv
 # Load local configuration before LangGraph initializes its serializer.
 load_dotenv(override=True)
 
+from typing import Any
+
 from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.types import interrupt
-from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
+
+try:
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+    _POSTGRES_AVAILABLE = True
+    _POSTGRES_IMPORT_ERROR = None
+except (ImportError, Exception) as _pg_exc:
+    PostgresSaver = None  # type: ignore
+    dict_row = None  # type: ignore
+    ConnectionPool = None  # type: ignore
+    _POSTGRES_AVAILABLE = False
+    _POSTGRES_IMPORT_ERROR = _pg_exc
 
 from langgraph_workflow.interview_state import InterviewState
 
 # ---------------------------------------------------------------------------
-# Import existing pure AI functions — zero logic duplication.
+# Import existing pure AI functions â€” zero logic duplication.
 # ---------------------------------------------------------------------------
-from question_intellegence.question_generator import generate_question as _generate_question
-from answer_intellegence.answer_evaluator import evaluate_answer as _evaluate_answer
-from adaptive_intellegence.adaptive_engine import decide_next_step as _decide_next_step
-from report_intellegence.report_generator import generate_narrative as _generate_narrative
+from question_intelligence.question_generator import generate_question as _generate_question
+from answer_intelligence.answer_processor import process_candidate_answer as _process_candidate_answer
+from adaptive_intelligence.adaptive_engine import decide_next_step as _decide_next_step, _get_next_topic
+from report_intelligence.report_generator import generate_narrative as _generate_narrative
 from langgraph_workflow.interview_brief import (
     build_interview_brief,
     max_followups_per_topic,
@@ -83,17 +95,36 @@ from langgraph_workflow.interview_brief import (
 
 logger = logging.getLogger(__name__)
 
+import time
+latency_file = open("latency_metrics.log", "a")
+def log_latency(msg, *args):
+    formatted = msg % args
+    logger.info(formatted)
+    latency_file.write(formatted + "\n")
+    latency_file.flush()
+
+# ---------------------------------------------------------------------------
+# Scoring constants
+# ---------------------------------------------------------------------------
+TOPIC_MASTERY_SCORE = 7
+
+# Difficulty multipliers for weighted scoring.
+# Harder questions deserve more weight in the overall score.
+_DIFFICULTY_WEIGHT: dict[str, float] = {
+    "easy":   0.7,
+    "medium": 1.0,
+    "hard":   1.3,
+}
+
 # ---------------------------------------------------------------------------
 # A transaction-scoped PostgreSQL advisory lock serializes checkpoint schema
 # migrations across separate serverless instances as well as local processes.
 # ---------------------------------------------------------------------------
 _CHECKPOINT_SETUP_LOCK_ID = 0x4D4F434B4F5241
 _checkpoint_store_lock = threading.Lock()
-_checkpoint_pool: ConnectionPool | None = None
-_postgres_checkpointer: PostgresSaver | None = None
+_checkpoint_pool: Any | None = None
+_postgres_checkpointer: Any | None = None
 _interview_graph = None
-
-TOPIC_MASTERY_SCORE = 7
 
 
 def _sanitize_database_url(database_url: str) -> str:
@@ -169,6 +200,26 @@ def _initialize_checkpoint_schema(database_url: str) -> None:
             )
 
 
+if _POSTGRES_AVAILABLE and PostgresSaver is not None:
+    class InstrumentedPostgresSaver(PostgresSaver):
+        def put(self, *args, **kwargs):
+            import time
+            t0 = time.monotonic()
+            try:
+                return super().put(*args, **kwargs)
+            finally:
+                log_latency("[LATENCY] pg_checkpoint_put duration=%.3fs", time.monotonic() - t0)
+        
+        def put_writes(self, *args, **kwargs):
+            import time
+            t0 = time.monotonic()
+            try:
+                return super().put_writes(*args, **kwargs)
+            finally:
+                log_latency("[LATENCY] pg_checkpoint_put_writes duration=%.3fs", time.monotonic() - t0)
+else:
+    InstrumentedPostgresSaver = None  # type: ignore
+
 def _get_postgres_checkpointer():
     """Return the process-wide PostgresSaver, initializing its pool once."""
     global _checkpoint_pool, _postgres_checkpointer
@@ -180,10 +231,22 @@ def _get_postgres_checkpointer():
         if _postgres_checkpointer is not None:
             return _postgres_checkpointer
 
+        allow_memory = os.getenv("ALLOW_MEMORY_CHECKPOINTER", "").lower() in ("true", "1", "yes")
+
+        if not _POSTGRES_AVAILABLE:
+            logger.warning(
+                "PostgreSQL/psycopg is unavailable (%s). "
+                "Falling back to MemorySaver.",
+                _POSTGRES_IMPORT_ERROR,
+            )
+            from langgraph.checkpoint.memory import MemorySaver
+            _postgres_checkpointer = MemorySaver()
+            return _postgres_checkpointer
+
         database_url = _sanitize_database_url(os.getenv("DATABASE_URL", ""))
 
         if not database_url:
-            if os.getenv("ALLOW_MEMORY_CHECKPOINTER", "").lower() in ("true", "1", "yes"):
+            if allow_memory:
                 logger.warning(
                     "DATABASE_URL not set. Falling back to MemorySaver because ALLOW_MEMORY_CHECKPOINTER=true."
                 )
@@ -205,14 +268,14 @@ def _get_postgres_checkpointer():
 
             pool = _create_checkpoint_pool(database_url)
             pool.open(wait=True, timeout=10)
-            checkpointer = PostgresSaver(pool)
+            checkpointer = InstrumentedPostgresSaver(pool)
             _checkpoint_pool = pool
             _postgres_checkpointer = checkpointer
             return checkpointer
         except Exception as exc:
             if pool is not None:
                 pool.close()
-            if os.getenv("ALLOW_MEMORY_CHECKPOINTER", "").lower() in ("true", "1", "yes"):
+            if allow_memory:
                 logger.warning(
                     "PostgreSQL checkpointer connection failed (%s). "
                     "ALLOW_MEMORY_CHECKPOINTER=true: falling back to MemorySaver.",
@@ -225,7 +288,7 @@ def _get_postgres_checkpointer():
 
 
 # ===========================================================================
-# NODE 1 — create_interview_plan
+# NODE 1 â€” create_interview_plan
 # ===========================================================================
 
 def create_interview_plan(state: InterviewState) -> dict:
@@ -283,7 +346,7 @@ def create_interview_plan(state: InterviewState) -> dict:
     # Resolve current_topic.
     current_topic: str = state.get("current_topic", "").strip()
     if not current_topic:
-        # No pre-set topic — use first role topic.
+        # No pre-set topic â€” use first role topic.
         if role_topics:
             current_topic = role_topics[0]
         elif available_topics:
@@ -294,7 +357,7 @@ def create_interview_plan(state: InterviewState) -> dict:
                 "candidate_profile and no current_topic was pre-set."
             )
     elif current_topic not in available_topics:
-        # Pre-set topic is not in the valid topic pool — reset to first.
+        # Pre-set topic is not in the valid topic pool â€” reset to first.
         current_topic = available_topics[0] if available_topics else role_topics[0]
 
     # Validate / default difficulty.
@@ -325,14 +388,14 @@ def create_interview_plan(state: InterviewState) -> dict:
 
 
 # ===========================================================================
-# NODE 2 — generate_question
+# NODE 2 â€” generate_question
 # ===========================================================================
 
 def generate_question(state: InterviewState) -> dict:
     """
     Generate the next interview question and commit it to state.
 
-    This node ONLY generates the question — it does NOT pause for the answer.
+    This node ONLY generates the question â€” it does NOT pause for the answer.
     Pausing happens in the next node (wait_for_answer).
 
     This split is necessary because LangGraph 1.2 only commits state updates
@@ -362,6 +425,7 @@ def generate_question(state: InterviewState) -> dict:
     adaptive_decision_dict: dict = state.get("adaptive_decision") or {}
     adaptive_action: str = adaptive_decision_dict.get("next_action", "")
 
+    _t_gq = time.monotonic()
     question_data = _generate_question(
         candidate_profile,
         role,
@@ -371,6 +435,7 @@ def generate_question(state: InterviewState) -> dict:
         adaptive_action,
         interview_brief=interview_brief,
     )
+    log_latency("[LATENCY] node_generate_question duration=%.3fs", time.monotonic() - _t_gq)
 
     question_count = question_count + 1
 
@@ -384,36 +449,30 @@ def generate_question(state: InterviewState) -> dict:
 
 
 # ===========================================================================
-# NODE 3 — wait_for_answer
+# NODE 3 â€” wait_for_answer
+# ===========================================================================
+# NODE 3 — process_answer
 # ===========================================================================
 
-def wait_for_answer(state: InterviewState) -> dict:
+def process_answer(state: InterviewState) -> dict:
     """
-    Pause the graph and wait for the candidate's answer.
+    Pause the graph and wait for the candidate's answer, then process it.
 
     This node calls interrupt() which suspends the graph at this point and
-    saves a checkpoint.  The caller (FastAPI) receives control and can read
-    the committed state (including current_question) from the checkpoint.
+    saves a checkpoint. The caller receives control and can read the committed
+    state (including current_question).
 
-    When the candidate submits an answer, the caller resumes:
-
-        from langgraph.types import Command
-        graph.invoke(Command(resume=<answer_string>), config)
-
-    LangGraph replays this node from the interrupt() call, and the return
-    value of interrupt(...) becomes the answer string.
-
-    Validates that the resumed answer is non-empty before committing it,
-    to give a clear error rather than a cryptic RuntimeError one node later.
-
-    Writes:
-        current_answer — the candidate's raw answer text
+    When the candidate submits an answer, the caller resumes via Command(resume=answer).
+    Then, this node immediately evaluates the answer and runs the adaptive engine
+    before returning, eliminating redundant checkpoints.
     """
     current_question = state.get("current_question", {})
     question_count   = state.get("question_count", 0)
 
     public_question = dict(current_question or {})
     public_question.pop("expected_concepts", None)
+    
+    # 1. Wait for answer
     candidate_answer: str = interrupt(
         {
             "event":    "answer_required",
@@ -422,107 +481,19 @@ def wait_for_answer(state: InterviewState) -> dict:
         }
     )
 
-    # Validate immediately so the error surfaces at the right node.
     if not str(candidate_answer).strip():
         raise ValueError(
-            "wait_for_answer: answer cannot be empty. "
+            "process_answer: answer cannot be empty. "
             "Resume with a non-empty string via Command(resume=<answer>)."
         )
 
-    return {
-        "current_answer": candidate_answer,
-    }
-
-
-# ===========================================================================
-# NODE 4 — evaluate_answer
-# ===========================================================================
-
-def evaluate_answer(state: InterviewState) -> dict:
-    """
-    Evaluate the candidate's answer using the existing pure function.
-
-    Reads:
-        current_question  — the question dict (contains expected_concepts)
-        current_answer    — the raw answer text submitted by the candidate
-
-    Writes:
-        current_evaluation — the full evaluation dict
-
-    Raises:
-        RuntimeError: if current_question or current_answer is missing/empty.
-    """
-    question_data    = state.get("current_question")
-    candidate_answer = state.get("current_answer")
-
-    if not question_data or not isinstance(question_data, dict):
-        raise RuntimeError(
-            "evaluate_answer: current_question is missing or invalid."
-        )
-
-    if not candidate_answer or not str(candidate_answer).strip():
-        raise RuntimeError(
-            "evaluate_answer: current_answer is empty."
-        )
-
-    question_text: str      = question_data.get("question", "")
-    expected_concepts: list = question_data.get("expected_concepts", [])
-    if not isinstance(expected_concepts, list):
-        expected_concepts = []
-
-    evaluation = _evaluate_answer(
-        question_text,
-        expected_concepts,
-        candidate_answer,
-        role=state.get("role", ""),
-        difficulty=state.get("current_difficulty", "medium"),
-        recent_turns=state.get("interview_history") or [],
-        interview_brief=state.get("interview_brief"),
-    )
-
-    feedback = str(evaluation.get("feedback") or "").strip()
-
-    return {
-        "current_evaluation": evaluation,
-        "interviewer_feedback": feedback,
-    }
-
-
-# ===========================================================================
-# NODE 5 — run_adaptive_engine
-# (registered in the graph as "adaptive_decision" for route compatibility)
-# ===========================================================================
-
-def run_adaptive_engine(state: InterviewState) -> dict:
-    """
-    Decide the next topic and difficulty using the existing pure function.
-    Append the completed turn to interview_history.
-    Set is_finished if the question limit or early-exit conditions are met.
-
-    Reads:
-        current_evaluation, current_topic, current_difficulty,
-        topics_covered, role_topics, candidate_topics, available_topics,
-        question_count, max_questions,
-        current_question, current_answer, interview_history
-
-    Writes:
-        adaptive_decision  — the decision dict from decide_next_step
-        current_topic      — updated for the next question
-        current_difficulty — updated for the next question
-        is_finished        — True if interview should end
-        interview_history  — appended with the current turn record
-
-    Raises:
-        RuntimeError: if current_evaluation is missing or not a dict.
-    """
-    evaluation         = state.get("current_evaluation")
+    # 2. Compute potential next topic
     current_topic      = state["current_topic"]
     current_difficulty = state["current_difficulty"]
     topics_covered: list[str]   = list(state.get("topics_covered", []))
     role_topics: list[str]      = list(state.get("role_topics", []))
     candidate_topics: list[str] = list(state.get("candidate_topics", []))
     available_topics: list[str] = list(state.get("available_topics", []))
-    question_count: int         = state.get("question_count", 0)
     max_questions: int          = state["max_questions"]
     followups_on_topic: int     = int(state.get("followups_on_current_topic") or 0)
     max_followups: int          = int(state.get("max_followups_per_topic") or max_followups_per_topic())
@@ -531,11 +502,42 @@ def run_adaptive_engine(state: InterviewState) -> dict:
     if history:
         previous_action = (history[-1].get("adaptive_decision") or {}).get("next_action", "")
 
-    if not evaluation or not isinstance(evaluation, dict):
-        raise RuntimeError(
-            "run_adaptive_engine: current_evaluation is missing or invalid."
-        )
+    topics_visited: list[str] = list(state.get("topics_visited") or topics_covered)
 
+    next_topic_if_needed = _get_next_topic(
+        current_topic=current_topic,
+        topics_covered=topics_covered,
+        topics_visited=topics_visited,
+        role_topics=role_topics,
+        candidate_topics=candidate_topics,
+    )
+
+    # 3. Evaluate answer and propose question (Combined Gemini Call)
+    question_text: str      = current_question.get("question", "")
+    expected_concepts: list = current_question.get("expected_concepts", [])
+    if not isinstance(expected_concepts, list):
+        expected_concepts = []
+
+    _t_ea = time.monotonic()
+    process_output = _process_candidate_answer(
+        question=question_text,
+        expected_concepts=expected_concepts,
+        candidate_answer=candidate_answer,
+        role=state.get("role", ""),
+        current_topic=current_topic,
+        current_difficulty=current_difficulty,
+        recent_turns=history,
+        interview_brief=state.get("interview_brief"),
+        next_topic_if_needed=next_topic_if_needed,
+    )
+    log_latency("[LATENCY] node_process_answer_inference duration=%.3fs", time.monotonic() - _t_ea)
+
+    evaluation = process_output.get("evaluation") or {}
+    question_proposal = process_output.get("question_proposal")
+    feedback = str(evaluation.get("feedback") or "").strip()
+
+    # 4. Run deterministic adaptive engine
+    _t_ad = time.monotonic()
     decision = _decide_next_step(
         evaluation=evaluation,
         current_topic=current_topic,
@@ -546,7 +548,9 @@ def run_adaptive_engine(state: InterviewState) -> dict:
         followups_on_topic=followups_on_topic,
         max_followups=max_followups,
         previous_action=previous_action,
+        topics_visited=topics_visited,
     )
+    log_latency("[LATENCY] node_adaptive_decision duration=%.3fs", time.monotonic() - _t_ad)
 
     next_topic: str      = decision.get("next_topic", current_topic)
     next_difficulty: str = decision.get("difficulty", current_difficulty)
@@ -570,55 +574,71 @@ def run_adaptive_engine(state: InterviewState) -> dict:
     if topic_key not in covered_lower:
         if score >= TOPIC_MASTERY_SCORE or cycle_complete:
             topics_covered = topics_covered + [current_topic]
+    
     turn_record = {
         "turn":              question_count,
-        "question":          state.get("current_question"),
-        "answer":            state.get("current_answer"),
+        "question":          current_question,
+        "answer":            candidate_answer,
         "evaluation":        evaluation,
         "adaptive_decision": decision,
     }
     history = history + [turn_record]
 
-    # Primary termination: question count limit reached.
+    # Termination decision
     is_finished: bool = question_count >= max_questions
+    termination_reason: str = ""
 
-    # Adaptive early-termination (requires at least 5 completed turns).
     if not is_finished and question_count >= 5:
         scores    = [t.get("evaluation", {}).get("score", 0) for t in history]
         avg_score = sum(scores) / len(scores) if scores else 0
-
-        # Early success: all available topics covered AND candidate scoring well.
-        covered_lower   = {t.strip().lower() for t in topics_covered}
-        available_lower = {t.strip().lower() for t in available_topics}
-        covered_all     = covered_lower >= available_lower
-
-        if covered_all and avg_score >= 7.5:
+        if avg_score < 4.0:
             is_finished = True
-            logger.info(
-                "Adaptive early finish: all topics covered, avg_score=%.1f", avg_score
-            )
+            termination_reason = "Adaptive early-exit (score < 4.0 after 5 turns)."
 
-        # Early exit: candidate consistently struggling.
-        elif avg_score < 3.0:
-            is_finished = True
-            logger.info(
-                "Adaptive early finish: low avg_score=%.1f after %d questions",
-                avg_score, question_count,
-            )
+    if next_action == "finish":
+        is_finished = True
+        termination_reason = "Adaptive engine determined interview is complete."
+    elif len(history) >= max_questions:
+        is_finished = True
+        termination_reason = f"Reached maximum questions ({max_questions})."
+
+    # 5. Validate question proposal against deterministic decision
+    use_fallback = True
+    new_question = None
+    if not is_finished and question_proposal:
+        proposed_topic = str(question_proposal.get("topic") or "").strip().lower()
+        decided_topic = str(next_topic).strip().lower()
+        
+        # Ensure Gemini didn't try to switch topic when it shouldn't, or vice-versa
+        if proposed_topic == decided_topic:
+            use_fallback = False
+            new_question = dict(question_proposal)
+            # Force difficulty to match deterministic engine
+            new_question["difficulty"] = next_difficulty
+            question_count += 1
+            log_latency("[LATENCY] process_answer accepted proposed question topic=%s", proposed_topic)
+        else:
+            log_latency("[LATENCY] process_answer rejected proposal: expected topic %s, got %s", decided_topic, proposed_topic)
+
+    decision["use_fallback_generate"] = use_fallback
 
     return {
-        "adaptive_decision":           decision,
-        "current_topic":               next_topic,
-        "current_difficulty":          next_difficulty,
-        "topics_covered":              topics_covered,
-        "followups_on_current_topic":  followups_on_topic,
-        "interview_history":           history,
-        "is_finished":                 is_finished,
+        "current_question":           new_question if not use_fallback else None,
+        "question_count":             question_count,
+        "current_answer":             None,
+        "current_evaluation":         evaluation,
+        "interviewer_feedback":       feedback,
+        "adaptive_decision":          decision,
+        "current_topic":              next_topic,
+        "current_difficulty":         next_difficulty,
+        "is_finished":                is_finished,
+        "interview_history":          history,
+        "termination_reason":         termination_reason,
+        "topics_visited":             topics_visited + [next_topic] if next_topic not in topics_visited else topics_visited,
+        "followups_on_current_topic": followups_on_topic,
+        "topics_covered":             topics_covered,
     }
 
-
-# ===========================================================================
-# NODE 6 — generate_final_report
 # ===========================================================================
 
 def generate_final_report(state: InterviewState) -> dict:
@@ -628,13 +648,13 @@ def generate_final_report(state: InterviewState) -> dict:
     Produces a report dict stored in state under "final_report".
 
     Uses:
-        - state["topics_covered"]  — the actual tracked list (single source of truth)
+        - state["topics_covered"]  â€” the actual tracked list (single source of truth)
           rather than re-deriving from history question dicts, which may differ
           if the AI returns a different topic string.
-        - interview_history        — for scores, feedback, missing_concepts, actions.
+        - interview_history        â€” for scores, feedback, missing_concepts, actions.
 
     Note:
-        is_finished is NOT re-set here — it was already set True by
+        is_finished is NOT re-set here â€” it was already set True by
         run_adaptive_engine (or should_continue routing logic).
         Setting it again here would be a double-write with no effect,
         but is removed for clarity.
@@ -644,17 +664,32 @@ def generate_final_report(state: InterviewState) -> dict:
     user_id             = state.get("user_id")
     question_count: int = state.get("question_count", 0)
 
-    # Use the canonical topics_covered list from state — single source of truth.
+    # Use the canonical topics_covered list from state â€” single source of truth.
     topics_covered: list[str] = list(state.get("topics_covered", []))
     interview_brief: dict = state.get("interview_brief") or {}
 
-    # Aggregate scores.
-    scores = [
-        turn.get("evaluation", {}).get("score", 0)
-        for turn in history
-        if turn.get("evaluation")
-    ]
-    overall_score: float = round(sum(scores) / len(scores), 2) if scores else 0.0
+    # Aggregate scores â€” weighted by difficulty so harder questions count more.
+    # Follow-up turns are excluded from independent scoring; their score is
+    # already reflected by how the parent question steered the interview.
+    weighted_sum   = 0.0
+    weight_total   = 0.0
+    for turn in history:
+        if turn.get("evaluation") is None:
+            continue
+        action = (turn.get("adaptive_decision") or {}).get("next_action", "")
+        if action == "follow_up":
+            # Follow-ups contribute to the parent topic's dimension, not as an
+            # independent question in the scoring average.
+            continue
+        difficulty = (turn.get("question") or {}).get("difficulty", "medium")
+        weight = _DIFFICULTY_WEIGHT.get(str(difficulty).lower(), 1.0)
+        try:
+            score = float(turn["evaluation"].get("score", 0))
+        except (TypeError, ValueError):
+            score = 0.0
+        weighted_sum  += score * weight
+        weight_total  += weight
+    overall_score: float = round(weighted_sum / weight_total, 2) if weight_total else 0.0
 
     # Collect feedback strings.
     feedback_notes: list[str] = [
@@ -714,7 +749,8 @@ def generate_final_report(state: InterviewState) -> dict:
         if turn.get("adaptive_decision", {}).get("next_action")
     ]
 
-    # Generate narrative via AI (with graceful fallback).
+    narrative_failed_flag = False
+    _t_nar = time.monotonic()
     try:
         narrative = _generate_narrative(
             role=role,
@@ -726,14 +762,17 @@ def generate_final_report(state: InterviewState) -> dict:
             interview_demonstrated_strengths=interview_demonstrated,
             interview_knowledge_gaps=interview_gaps,
         )
+        log_latency("[LATENCY] node_generate_narrative duration=%.3fs", time.monotonic() - _t_nar)
     except Exception:
+        log_latency("[LATENCY] node_generate_narrative error duration=%.3fs", time.monotonic() - _t_nar)
         logger.warning("Narrative generation failed", exc_info=True)
         narrative = {
-            "strengths":       ["Completed the interview session."],
-            "weaknesses":      ["Could not generate weaknesses due to service error."],
-            "recommendations": ["Review the questions asked."],
-            "summary":         "The candidate completed the interview, but narrative generation failed.",
+            "summary": "",
+            "strengths": [],
+            "weaknesses": [],
+            "recommendations": [],
         }
+        narrative_failed_flag = True
 
     report = {
         "user_id":          user_id,
@@ -752,29 +791,29 @@ def generate_final_report(state: InterviewState) -> dict:
         "weaknesses":       narrative.get("weaknesses", []),
         "recommendations":  narrative.get("recommendations", []),
         "summary":          narrative.get("summary", ""),
+        "narrative_failed": narrative_failed_flag,
+        "termination_reason": state.get("termination_reason", ""),
     }
 
     return {
         "final_report": report,
-        # is_finished is already True from run_adaptive_engine — not re-set here.
+        # is_finished is already True from run_adaptive_engine â€” not re-set here.
     }
 
 
 # ===========================================================================
-# CONDITIONAL ROUTER — should_continue
+# CONDITIONAL ROUTER â€” should_continue
 # ===========================================================================
 
 def should_continue(state: InterviewState) -> str:
-    """
-    Route after run_adaptive_engine:
-
-        "finish"   → generate_final_report
-        "continue" → generate_question  (loop)
-
-    Single source of truth: is_finished (set by run_adaptive_engine).
-    The router is intentionally thin — all business logic lives in the node.
-    """
-    return "finish" if state.get("is_finished", False) else "continue"
+    if state.get("is_finished", False):
+        return "finish"
+    
+    adaptive = state.get("adaptive_decision") or {}
+    if adaptive.get("use_fallback_generate", True):
+        return "continue"
+        
+    return "process_answer"""
 
 
 # ===========================================================================
@@ -798,7 +837,7 @@ def build_interview_graph(checkpointer=None):
         graph = build_interview_graph()
         config = {"configurable": {"thread_id": "interview-42"}}
 
-        # Start: runs plan → generate_question → wait_for_answer, then pauses.
+        # Start: runs plan â†’ generate_question â†’ wait_for_answer, then pauses.
         graph.invoke(initial_state, config)
 
         # Read the committed question from state.
@@ -819,28 +858,25 @@ def build_interview_graph(checkpointer=None):
     # ------------------------------------------------------------------
     builder.add_node("create_interview_plan", create_interview_plan)
     builder.add_node("generate_question",     generate_question)
-    builder.add_node("wait_for_answer",       wait_for_answer)
-    builder.add_node("evaluate_answer",       evaluate_answer)
-    builder.add_node("adaptive_decision",     run_adaptive_engine)   # node name kept for graph compat
+    builder.add_node("process_answer",        process_answer)
     builder.add_node("generate_final_report", generate_final_report)
 
     # ------------------------------------------------------------------
-    # Edges — linear flow
+    # Edges â€” linear flow
     # ------------------------------------------------------------------
     builder.add_edge(START,                   "create_interview_plan")
     builder.add_edge("create_interview_plan", "generate_question")
-    builder.add_edge("generate_question",     "wait_for_answer")
-    builder.add_edge("wait_for_answer",       "evaluate_answer")
-    builder.add_edge("evaluate_answer",       "adaptive_decision")
+    builder.add_edge("generate_question",     "process_answer")
 
     # ------------------------------------------------------------------
-    # Conditional edge — loop or finish
+    # Conditional edge â€” loop or finish
     # ------------------------------------------------------------------
     builder.add_conditional_edges(
-        "adaptive_decision",
+        "process_answer",
         should_continue,
         {
             "continue": "generate_question",
+            "process_answer": "process_answer",
             "finish":   "generate_final_report",
         },
     )
@@ -874,7 +910,7 @@ def get_interview_graph():
 
 
 # ---------------------------------------------------------------------------
-# Public lazy proxy — maintains backwards compatibility.
+# Public lazy proxy â€” maintains backwards compatibility.
 #
 # `from langgraph_workflow.interview_graph import interview_graph` works
 # across the codebase (api/interview_router.py etc.) because this proxy
@@ -887,7 +923,7 @@ def get_interview_graph():
 class _LazyGraphProxy:
     """Forwards all attribute access to the lazily-initialised interview graph."""
 
-    __slots__ = ()   # no instance dict — all attrs delegate to the real graph
+    __slots__ = ()   # no instance dict â€” all attrs delegate to the real graph
 
     def __getattr__(self, name: str):
         return getattr(get_interview_graph(), name)

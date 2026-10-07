@@ -43,18 +43,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
         const payload = JSON.parse(jsonPayload);
         
+        // eslint-disable-next-line react/purity -- Date.now() called inside useEffect, not during render
         if (payload.exp && payload.exp < Date.now() / 1000) {
           console.warn('Token expired');
           clearAccessToken();
+          // eslint-disable-next-line react/set-state-in-effect -- syncing auth state from expired token (external check)
           setUser(null);
         } else {
-          setUser({
-            user_id: payload.user_id,
-            id: String(payload.user_id),
-            name: payload.email?.split('@')[0] || 'Candidate',
-            email: payload.email,
-          });
-        }
+            const nextUser = {
+              user_id: payload.user_id,
+              id: String(payload.user_id),
+              name: payload.name || payload.email?.split('@')[0] || 'Candidate',
+              email: payload.email,
+              username: payload.username || payload.email?.split('@')[0] || 'Candidate',
+            };
+            console.log("AUTH USER (from token payload):", { payload, nextUser });
+            setUser(nextUser);
+          }
 
       } catch (e) {
         console.error('Invalid token payload', e);
@@ -75,12 +80,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!res?.user?.user_id) {
         throw new Error('Login response missing user data');
     }
-    setUser({
+    const nextUser = {
       user_id: res.user.user_id,
       id: String(res.user.user_id),
-      name: res.user.email?.split('@')[0] || 'Candidate',
+      name: res.user.name || res.user.email?.split('@')[0] || 'Candidate',
       email: res.user.email,
-    });
+      username: res.user.username || res.user.email?.split('@')[0] || 'Candidate',
+    };
+    console.log("AUTH USER (from login response):", { res, nextUser });
+    setUser(nextUser);
 
   };
 
@@ -113,6 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
+// eslint-disable-next-line react/only-export-components -- hook intentionally co-located with provider
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {

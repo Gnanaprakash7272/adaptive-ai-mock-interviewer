@@ -1,4 +1,4 @@
-from adaptive_intellegence.adaptive_engine import decide_next_step
+from adaptive_intelligence.adaptive_engine import decide_next_step
 
 ROLE_TOPICS = ["Python", "Docker", "System Design"]
 CANDIDATE_TOPICS = ["Pandas"]

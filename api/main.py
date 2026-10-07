@@ -2,16 +2,16 @@ import os
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query
+from fastapi import FastAPI, File, Request, UploadFile, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from resume_intellegence.text_extract import extract_text
-from resume_intellegence.text_clean import clean_resume_text
-from resume_intellegence.resume_analyzer import analyze_resume
-from api.auth import router as auth_router, get_current_user, UserInfo
+from resume_intelligence.text_extract import extract_text
+from resume_intelligence.text_clean import clean_resume_text, strip_pii
+from resume_intelligence.resume_analyzer import analyze_resume
+from api.auth import router as auth_router, get_current_user, UserInfo, limiter
 from api.interview_router import router as interview_router
 from api.resume_repository import save_candidate_profile, get_candidate_profile
 from api.role_catalogue import ROLE_CATALOGUE
@@ -37,7 +37,14 @@ from api.errors import (
 
 logger = logging.getLogger(__name__)
 
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
 app = FastAPI(title="AI MOCKORA API")
+
+# Register SlowAPI rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # =============================================================================
@@ -150,7 +157,9 @@ def root():
 # =============================================================================
 
 @app.post("/resume/analyze")
+@limiter.limit("10/minute")
 async def analyze_resume_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     current_user: UserInfo = Depends(get_current_user)
 ):
@@ -205,9 +214,12 @@ async def analyze_resume_endpoint(
     if not cleaned_text or not cleaned_text.strip():
         raise EmptyResumeError("No readable text could be extracted from this resume.")
 
-    # 7. Analyze resume with Gemini AI
+    # 7. Strip PII (email, phone) before sending to Gemini
+    gemini_text = strip_pii(cleaned_text)
+
+    # 8. Analyze resume with Gemini AI
     try:
-        candidate_profile = analyze_resume(cleaned_text)
+        candidate_profile = analyze_resume(gemini_text)
     except (TimeoutError, TimeoutException if "TimeoutException" in globals() else TimeoutError) as exc:
         logger.error("AI service timeout during resume analysis: %s", exc)
         raise AIServiceTimeoutError("AI processing timed out. Please try again.")

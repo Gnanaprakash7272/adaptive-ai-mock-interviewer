@@ -15,6 +15,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  username: string;
   avatarUrl?: string;
   targetRole?: UserRoleTarget;
   experienceYears?: number;
@@ -26,6 +27,7 @@ export interface User {
 }
 
 export interface SignupRequest {
+  name: string;
   email: string;
   password: string;
 }
@@ -33,6 +35,7 @@ export interface SignupRequest {
 export interface SignupResponse {
   user_id: number;
   email: string;
+  username: string;
   message: string;
 }
 
@@ -44,6 +47,8 @@ export interface LoginRequest {
 export interface UserInfo {
   user_id: number;
   email: string;
+  username: string;
+  name: string;
 }
 
 export interface LoginResponse {
@@ -132,7 +137,10 @@ export interface InterviewConfig {
 
 export interface StartInterviewRequest {
   role: string;
+  role_id?: string;
   max_questions: number;
+  topic?: string;
+  difficulty?: string;
 }
 
 export interface BackendQuestion {
@@ -155,7 +163,16 @@ export interface SubmitAnswerRequest {
   answer: string;
 }
 
+export interface BackendReportQuestion {
+  question: string;
+  answer: string;
+  score?: number;
+  missing_concepts?: string[];
+}
+
 export interface BackendFinalReport {
+  created_at?: string;
+  role?: string;
   overall_score: number;
   strengths: string[];
   weaknesses: string[];
@@ -165,6 +182,7 @@ export interface BackendFinalReport {
   profile_strengths?: string[];
   interview_demonstrated_strengths?: string[];
   interview_knowledge_gaps?: string[];
+  questions?: BackendReportQuestion[];
 }
 
 export interface SubmitAnswerResponse {

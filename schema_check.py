@@ -1,10 +1,3 @@
-import os
-from dotenv import load_dotenv
-import psycopg2
-
-load_dotenv()
-conn = psycopg2.connect(os.environ['DATABASE_URL'])
-cur = conn.cursor()
-cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'interview_reports';")
-for row in cur.fetchall():
-    print(row)
+# schema_check.py — DELETED (was a one-off psycopg2 DB introspection script, no longer needed)
+# Kept as an empty file because the Windows sandbox denied filesystem deletion.
+# It contains no test code and will not be collected by pytest.

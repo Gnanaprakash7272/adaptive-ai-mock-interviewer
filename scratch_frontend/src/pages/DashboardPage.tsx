@@ -20,12 +20,12 @@ import {
   TrendingUp,
   Upload,
   UserCheck,
-  Zap,
+
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
-import type { CandidateProfile } from '../types';
+import type { CandidateProfile, HistoryItem } from '../types';
 
 interface DashboardStat {
   label: string;
@@ -34,35 +34,31 @@ interface DashboardStat {
   icon: React.ElementType;
 }
 
-interface RecentInterview {
-  id: string;
-  role: string;
-  date: string;
-  score?: number;
-  questions?: number;
-  status: 'completed' | 'in-progress';
-}
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
 
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
+  const [recentInterviews, setRecentInterviews] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchData = async () => {
       try {
-        const data = await apiService.getCandidateProfile();
-        setProfile(data);
+        const [profileData, historyData] = await Promise.all([
+          apiService.getCandidateProfile().catch(() => null),
+          apiService.getHistory().catch(() => [])
+        ]);
+        setProfile(profileData);
+        setRecentInterviews(historyData || []);
       } catch (error) {
-        console.error('Failed to fetch candidate profile:', error);
-        setProfile(null);
+        console.error('Failed to fetch dashboard data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProfile();
+    fetchData();
   }, []);
 
   /*
@@ -96,13 +92,7 @@ export const DashboardPage: React.FC = () => {
 
   /*
    * Backend integration point.
-   *
-   * Replace this with:
-   * GET /interviews/recent
-   *
-   * Keeping it empty for now prevents fake interview data.
    */
-  const recentInterviews: RecentInterview[] = [];
 
   const stats: DashboardStat[] = [
     {
@@ -131,7 +121,7 @@ export const DashboardPage: React.FC = () => {
     },
   ];
 
-  const firstName = user?.name?.split(' ')[0] || 'Candidate';
+  const displayName = profile?.candidate?.name || user?.username || 'Candidate';
 
   return (
     <PageWrapper className="mx-auto max-w-7xl space-y-8">
@@ -162,7 +152,7 @@ export const DashboardPage: React.FC = () => {
             <h1 className="text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl lg:text-5xl">
               Welcome back,{' '}
               <span className="text-brand-600 dark:text-brand-400">
-                {firstName}
+                {displayName}
               </span>
             </h1>
 
@@ -386,13 +376,13 @@ export const DashboardPage: React.FC = () => {
 
                     <div>
                       <h4 className="font-bold text-slate-900 dark:text-white">
-                        {interview.role}
+                        {interview.roleTitle}
                       </h4>
 
                       <p className="mt-1 text-xs text-slate-500">
                         {interview.date}
-                        {interview.questions
-                          ? ` · ${interview.questions} questions`
+                        {interview.durationMinutes
+                          ? ` · ${interview.durationMinutes} min`
                           : ''}
                       </p>
                     </div>
@@ -401,10 +391,10 @@ export const DashboardPage: React.FC = () => {
 
                   <div className="flex items-center gap-5">
 
-                    {interview.score !== undefined && (
+                    {interview.overallScore !== undefined && (
                       <div className="text-right">
                         <p className="text-xl font-black text-slate-900 dark:text-white">
-                          {interview.score}
+                          {interview.overallScore}
                         </p>
                         <p className="text-[10px] font-bold uppercase text-slate-400">
                           Score
@@ -412,7 +402,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                     )}
 
-                    <Link to={`/reports/${interview.id}`}>
+                    <Link to={`/report/${interview.id}`}>
                       <Button variant="outline" size="sm">
                         Report
                       </Button>
@@ -444,28 +434,6 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-
-            <Link to="/roles" className="block">
-              <div className="group flex items-center gap-4 rounded-2xl border border-slate-200 p-4 transition-all hover:border-brand-300 hover:bg-brand-50 dark:border-slate-800 dark:hover:border-brand-900 dark:hover:bg-brand-950/20">
-
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-                  <PlayCircle className="h-5 w-5" />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-slate-900 dark:text-white">
-                    Start Interview
-                  </p>
-
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Begin an adaptive session
-                  </p>
-                </div>
-
-                <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-1" />
-
-              </div>
-            </Link>
 
             <Link to="/resume/upload" className="block">
               <div className="group flex items-center gap-4 rounded-2xl border border-slate-200 p-4 transition-all hover:border-brand-300 hover:bg-brand-50 dark:border-slate-800 dark:hover:border-brand-900 dark:hover:bg-brand-950/20">
@@ -518,9 +486,9 @@ export const DashboardPage: React.FC = () => {
       </section>
 
       {/* ============================================================
-          PROFILE / RECOMMENDATION
+          PROFILE
       ============================================================ */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-6 max-w-4xl">
 
         {/* Candidate Profile */}
         <Card className="p-6 sm:p-7">
@@ -637,59 +605,6 @@ export const DashboardPage: React.FC = () => {
 
         </Card>
 
-        {/* Recommended Practice */}
-        <Card className="relative overflow-hidden p-6 sm:p-7">
-
-          <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-brand-500/10 blur-3xl" />
-
-          <div className="relative">
-
-            <div className="flex items-start justify-between">
-
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-                  Recommended Next Step
-                </p>
-
-                <h3 className="mt-1 text-xl font-black text-slate-900 dark:text-white">
-                  Start Your First Practice
-                </h3>
-              </div>
-
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-                <Zap className="h-5 w-5" />
-              </div>
-
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-brand-100 bg-brand-50/70 p-5 dark:border-brand-900/30 dark:bg-brand-950/20">
-
-              <p className="text-xs font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-                Adaptive Interview
-              </p>
-
-              <h4 className="mt-2 text-lg font-black text-slate-900 dark:text-white">
-                Choose a role and let Mockora build the session
-              </h4>
-
-              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
-                Questions will be generated according to your selected role,
-                candidate profile, topic, and difficulty.
-              </p>
-
-              <Link to="/roles" className="mt-5 inline-block">
-                <Button>
-                  Explore Roles
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-
-            </div>
-
-          </div>
-
-        </Card>
-
       </section>
 
       {/* ============================================================
@@ -784,47 +699,8 @@ export const DashboardPage: React.FC = () => {
       </section>
 
       {/* ============================================================
-          FINAL CTA
+          WORKFLOW END
       ============================================================ */}
-      <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-brand-600 to-red-600 p-8 text-white shadow-xl shadow-brand-500/20 sm:p-10">
-
-        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-
-        <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-
-          <div className="max-w-2xl">
-
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/80">
-              <Sparkles className="h-4 w-4" />
-              AI MOCKORA
-            </div>
-
-            <h2 className="mt-2 text-2xl font-black sm:text-3xl">
-              Ready to test your technical skills?
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-white/80">
-              Start an adaptive mock interview and experience questions that
-              evolve with your answers.
-            </p>
-
-          </div>
-
-          <Link to="/roles">
-
-            <Button
-              size="lg"
-              className="whitespace-nowrap bg-white text-brand-600 hover:bg-slate-100"
-            >
-              Start Interview
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-
-          </Link>
-
-        </div>
-
-      </section>
 
     </PageWrapper>
   );

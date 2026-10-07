@@ -24,7 +24,7 @@ export const SignupPage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiService.signup({ email, password });
+      await apiService.signup({ name, email, password });
       await login(email, password);
       addToast('success', 'Account Created!', 'Welcome to AI MOCKORA.');
       navigate('/dashboard');
@@ -52,13 +52,15 @@ export const SignupPage: React.FC = () => {
 
         <form onSubmit={handleSignup} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+            <label htmlFor="name-input" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
               Full Name
             </label>
             <div className="relative">
               <UserIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
+                id="name-input"
                 type="text"
+                autoComplete="name"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -68,13 +70,15 @@ export const SignupPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+            <label htmlFor="email-input" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
               Email Address
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
+                id="email-input"
                 type="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -86,13 +90,15 @@ export const SignupPage: React.FC = () => {
 
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+            <label htmlFor="password-input" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
               Password
             </label>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
+                id="password-input"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

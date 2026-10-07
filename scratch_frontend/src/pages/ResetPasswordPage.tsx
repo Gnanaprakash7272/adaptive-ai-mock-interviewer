@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, Link, Navigate } from 'react-router-dom';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -15,17 +15,14 @@ export const ResetPasswordPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-
   const location = useLocation();
-  const navigate = useNavigate();
   const { addToast } = useToast();
 
   const email = location.state?.email;
   const token = location.state?.token;
 
   if (!email || !token) {
-    navigate('/forgot-password');
-    return null;
+    return <Navigate to="/forgot-password" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,10 +74,13 @@ export const ResetPasswordPage: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
+            <label htmlFor="new-password-input" className="sr-only">New Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
+                id="new-password-input"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 required
                 placeholder="New Password"
                 value={password}
@@ -98,10 +98,13 @@ export const ResetPasswordPage: React.FC = () => {
             </div>
           </div>
           <div>
+            <label htmlFor="confirm-password-input" className="sr-only">Confirm Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
+                id="confirm-password-input"
                 type={showConfirmPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 required
                 placeholder="Confirm Password"
                 value={confirmPassword}

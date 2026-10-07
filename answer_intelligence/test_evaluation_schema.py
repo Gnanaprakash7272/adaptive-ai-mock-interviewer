@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from ai_schemas import EvaluationOutput, ValidationError, parse_model
-from answer_intellegence.answer_evaluator import evaluate_answer
+from answer_intelligence.answer_evaluator import evaluate_answer
 
 
 VALID = {
@@ -32,7 +32,7 @@ class TestEvaluationSchema(unittest.TestCase):
 
     def test_invalid_json_then_valid_retry(self):
         with patch(
-            "answer_intellegence.answer_evaluator.call_gemini_json",
+            "answer_intelligence.answer_evaluator.call_gemini_json",
             side_effect=[{"score": 99}, VALID],
         ) as mock_call:
             result = evaluate_answer(
@@ -47,7 +47,7 @@ class TestEvaluationSchema(unittest.TestCase):
 
     def test_invalid_output_raises_after_retry(self):
         with patch(
-            "answer_intellegence.answer_evaluator.call_gemini_json",
+            "answer_intelligence.answer_evaluator.call_gemini_json",
             return_value={"score": 99, "feedback": "bad"},
         ):
             with self.assertRaises(RuntimeError):

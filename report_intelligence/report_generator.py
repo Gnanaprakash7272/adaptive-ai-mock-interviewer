@@ -1,7 +1,10 @@
 import json
+import logging
 
 from ai_schemas import NarrativeOutput, ValidationError, parse_model
 from gemini_config import call_gemini_json
+
+logger = logging.getLogger(__name__)
 
 REPORT_SCHEMA = {
     "type": "object",
@@ -43,6 +46,16 @@ Rules:
 """
 
 
+# Sentinel returned when narrative generation fails so callers can detect it.
+NARRATIVE_FAILED_SENTINEL: dict = {
+    "narrative_failed": True,
+    "summary": "",
+    "strengths": [],
+    "weaknesses": [],
+    "recommendations": [],
+}
+
+
 def generate_narrative(
     role: str,
     overall_score: float,
@@ -53,6 +66,21 @@ def generate_narrative(
     interview_demonstrated_strengths: list = None,
     interview_knowledge_gaps: list = None,
 ) -> dict:
+    """
+    Generate the AI narrative portion of the final report.
+
+    Returns a dict with keys:
+        summary, strengths, weaknesses, recommendations
+
+    On success the dict does NOT contain ``narrative_failed``.
+    On failure, raises RuntimeError so the caller (interview_graph) can
+    catch it and set ``narrative_failed: True`` in the report.  This
+    distinguishes a genuine AI failure from a successfully-generated report.
+
+    Raises:
+        RuntimeError: if Gemini cannot produce a valid narrative after retries.
+        ValidationError: if the parsed output does not conform to NarrativeOutput.
+    """
     compact_history = []
     for turn in history or []:
         compact_history.append({
@@ -91,13 +119,15 @@ def generate_narrative(
             )
         )
 
-    payload = call_gemini_json(SYSTEM_PROMPT, user_prompt, max_output_tokens=3000)
+    payload = call_gemini_json(SYSTEM_PROMPT, user_prompt, max_output_tokens=3000, operation="generate_narrative")
     try:
         return parse_model(NarrativeOutput, payload)
     except ValidationError:
+        logger.warning("Narrative parse failed on first attempt; retrying with correction prompt")
         payload = call_gemini_json(
             SYSTEM_PROMPT,
             user_prompt + "\nRETRY: Return valid JSON matching the schema.",
             max_output_tokens=3000,
+            operation="generate_narrative",
         )
         return parse_model(NarrativeOutput, payload)

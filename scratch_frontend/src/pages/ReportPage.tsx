@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { ScoreCircle } from '../components/common/ScoreCircle';
 import {
-  Download,
-  Share2,
   CheckCircle2,
   AlertCircle,
   Award,
@@ -18,14 +16,12 @@ import {
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
-import { useToast } from '../context/ToastContext';
 import { apiService } from '../services/apiService';
 import type { BackendFinalReport } from '../types';
 
 export const ReportPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const location = useLocation();
-  const { addToast } = useToast();
 
   const [finalReport, setFinalReport] = useState<BackendFinalReport | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -33,7 +29,7 @@ export const ReportPage: React.FC = () => {
 
   useEffect(() => {
     async function initializeReport() {
-      const state = location.state as any;
+      const state = location.state as { finalReport?: BackendFinalReport } | null;
       if (state?.finalReport) {
         setFinalReport(state.finalReport);
         setIsInitializing(false);
@@ -50,23 +46,62 @@ export const ReportPage: React.FC = () => {
         const reportData = await apiService.getInterviewReport(sessionId);
         setFinalReport(reportData);
         setIsInitializing(false);
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Failed to restore interview report.');
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to restore interview report.';
+        setErrorMsg(errorMessage);
         setIsInitializing(false);
       }
     }
     initializeReport();
   }, [sessionId, location.state]);
 
-  const handleDownloadPDF = () => {
-    addToast('success', 'PDF Export Complete!', 'Downloading Report.pdf');
-    // @TODO: Implement real PDF generation and download
+  // Helper — defined outside useMemo so it's a stable reference, suppressed as it's a pure utility
+  // eslint-disable-next-line react/purity -- pure utility function, not called during render directly
+  const ensureArray = (val: unknown): string[] => {
+    if (Array.isArray(val)) return val as string[];
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed as string[];
+      } catch {
+        // ignore malformed JSON strings
+      }
+      return [val];
+    }
+    return [];
   };
+
+  // Derive display values — must be called unconditionally (before early returns)
+  const reportDerived = useMemo(() => {
+    if (!finalReport) return null;
+
+    let demonstratedStrengths = ensureArray(finalReport.interview_demonstrated_strengths);
+    if (demonstratedStrengths.length === 0) {
+      demonstratedStrengths = ensureArray(finalReport.strengths);
+    }
+
+    let knowledgeGaps = ensureArray(finalReport.interview_knowledge_gaps);
+    if (knowledgeGaps.length === 0) {
+      knowledgeGaps = ensureArray(finalReport.weaknesses);
+    }
+
+    return {
+      profileStrengths: ensureArray(finalReport.profile_strengths),
+      demonstratedStrengths,
+      knowledgeGaps,
+      interviewSummaryText: finalReport.summary || 'No summary available.',
+      recommendationsList: ensureArray(finalReport.recommendations),
+      topicsCovered: ensureArray(finalReport.topics_covered),
+      // eslint-disable-next-line react/purity -- new Date() inside useMemo callback, not raw render
+      formattedDate: new Date(finalReport.created_at || Date.now()).toLocaleDateString(),
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finalReport]);
 
   if (isInitializing) {
     return (
       <PageWrapper className="flex items-center justify-center min-h-[50vh]">
-        <div className="flex flex-col items-center text-center space-y-4">
+        <div className="flex flex-col items-center text-center space-y-4" aria-live="polite">
           <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
             Fetching your performance report...
@@ -79,8 +114,8 @@ export const ReportPage: React.FC = () => {
   if (errorMsg || !finalReport) {
     return (
       <PageWrapper className="flex items-center justify-center min-h-[50vh]">
-        <div className="flex flex-col items-center text-center space-y-4 max-w-sm">
-          <AlertTriangle className="w-10 h-10 text-red-500" />
+        <div className="flex flex-col items-center text-center space-y-4 max-w-sm" aria-live="assertive">
+          <AlertTriangle className="w-10 h-10 text-red-500" aria-hidden="true" />
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Could not load report</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {errorMsg || 'No report data found.'}
@@ -96,35 +131,16 @@ export const ReportPage: React.FC = () => {
   // UI mapping logic: map available backend fields, omit unsupported ones without inventing values.
   // topicPerformance variable removed as it was unused
   
-  const ensureArray = (val: any): string[] => {
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'string') {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {
-        // ignore
-      }
-      return [val];
-    }
-    return [];
-  };
-
-  const profileStrengths = ensureArray(finalReport.profile_strengths);
-  
-  let demonstratedStrengths = ensureArray(finalReport.interview_demonstrated_strengths);
-  if (demonstratedStrengths.length === 0) {
-    demonstratedStrengths = ensureArray(finalReport.strengths);
-  }
-
-  let knowledgeGaps = ensureArray(finalReport.interview_knowledge_gaps);
-  if (knowledgeGaps.length === 0) {
-    knowledgeGaps = ensureArray(finalReport.weaknesses);
-  }
-
-  const interviewSummaryText = finalReport.summary || 'No summary available.';
-  const recommendationsList = ensureArray(finalReport.recommendations);
-  const topicsCovered = ensureArray(finalReport.topics_covered);
+  const {
+    profileStrengths,
+    demonstratedStrengths,
+    knowledgeGaps,
+    interviewSummaryText,
+    recommendationsList,
+    topicsCovered,
+    formattedDate,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  } = reportDerived!;
 
   return (
     <PageWrapper className="space-y-8 max-w-5xl">
@@ -141,20 +157,14 @@ export const ReportPage: React.FC = () => {
             Performance Analysis Report
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Role Track: <strong className="text-slate-800 dark:text-slate-200">{(finalReport as any).role || 'Mock Session'}</strong> • {new Date().toLocaleDateString()}
+            Role Track: <strong className="text-slate-800 dark:text-slate-200">{finalReport.role || 'Mock Session'}</strong> • {formattedDate}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => addToast('info', 'Share link copied to clipboard')}>
-            <Share2 className="w-4 h-4 mr-1.5" /> Share
-          </Button>
-          <Button size="sm" onClick={handleDownloadPDF} className="shadow-lg">
-            <Download className="w-4 h-4 mr-1.5" /> Export PDF
-          </Button>
           <Link to="/roles">
             <Button size="sm" variant="secondary">
-              <RotateCcw className="w-4 h-4 mr-1.5" /> Retake
+              <RotateCcw className="w-4 h-4 mr-1.5" aria-hidden="true" /> Retake
             </Button>
           </Link>
         </div>
@@ -308,6 +318,45 @@ export const ReportPage: React.FC = () => {
           </ul>
         </Card>
       </div>
+
+      {/* PER-QUESTION BREAKDOWN */}
+      {finalReport.questions && finalReport.questions.length > 0 && (
+        <div className="space-y-6">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Question Breakdown</h2>
+          <div className="grid grid-cols-1 gap-6">
+            {finalReport.questions.map((q, idx) => (
+              <Card key={idx} className="p-6 space-y-4">
+                <div className="flex items-start justify-between">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white flex-1 mr-4">
+                    Q{idx + 1}: {q.question}
+                  </h3>
+                  {q.score !== undefined && q.score !== null && (
+                    <div className="flex-shrink-0 text-sm font-bold px-3 py-1 bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 rounded-full">
+                      Score: {q.score}/10
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg">
+                  <p className="font-semibold mb-1 text-slate-500">Your Answer:</p>
+                  <p className="italic">{q.answer || "No answer provided"}</p>
+                </div>
+                {q.missing_concepts && q.missing_concepts.length > 0 && (
+                  <div>
+                    <p className="font-semibold mb-1 text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> Missing Concepts
+                    </p>
+                    <ul className="list-disc pl-5 text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                      {q.missing_concepts.map((concept, i) => (
+                        <li key={i}>{concept}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </PageWrapper>
   );
 };

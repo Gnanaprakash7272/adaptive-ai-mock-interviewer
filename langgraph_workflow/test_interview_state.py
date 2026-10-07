@@ -77,6 +77,7 @@ class TestInterviewStateFields(unittest.TestCase):
         "current_topic",
         "current_difficulty",
         "topics_covered",
+        "topics_visited",       # Added Phase 1: ping-pong prevention
         "current_question",
         "current_answer",
         "current_evaluation",
@@ -109,11 +110,11 @@ class TestInterviewStateFields(unittest.TestCase):
         self.assertEqual(extra, [], f"Unexpected extra fields: {extra}")
 
     def test_total_field_count(self):
-        """INTERVIEW_STATE_FIELDS must contain exactly 23 entries."""
+        """INTERVIEW_STATE_FIELDS must contain exactly 24 entries."""
         fields = self._get_fields()
         self.assertEqual(
-            len(fields), 23,
-            f"Expected 23 fields, got {len(fields)}: {fields}",
+            len(fields), 24,
+            f"Expected 24 fields, got {len(fields)}: {fields}",
         )
 
     def test_identity_fields_present(self):

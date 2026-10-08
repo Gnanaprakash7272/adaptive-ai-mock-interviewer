@@ -62,7 +62,7 @@ load_dotenv(override=True)
 
 from typing import Any
 
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 try:
@@ -78,30 +78,31 @@ except (ImportError, Exception) as _pg_exc:
     _POSTGRES_AVAILABLE = False
     _POSTGRES_IMPORT_ERROR = _pg_exc
 
+from adaptive_intelligence.adaptive_engine import _get_next_topic
+from adaptive_intelligence.adaptive_engine import decide_next_step as _decide_next_step
+from answer_intelligence.answer_processor import (
+    process_candidate_answer as _process_candidate_answer,
+)
+from langgraph_workflow.interview_brief import (
+    build_interview_brief,
+    max_followups_per_topic,
+    plan_interview_topics,
+)
 from langgraph_workflow.interview_state import InterviewState
 
 # ---------------------------------------------------------------------------
 # Import existing pure AI functions â€” zero logic duplication.
 # ---------------------------------------------------------------------------
 from question_intelligence.question_generator import generate_question as _generate_question
-from answer_intelligence.answer_processor import process_candidate_answer as _process_candidate_answer
-from adaptive_intelligence.adaptive_engine import decide_next_step as _decide_next_step, _get_next_topic
 from report_intelligence.report_generator import generate_narrative as _generate_narrative
-from langgraph_workflow.interview_brief import (
-    build_interview_brief,
-    max_followups_per_topic,
-    plan_interview_topics,
-)
 
 logger = logging.getLogger(__name__)
 
 import time
-latency_file = open("latency_metrics.log", "a")
+
 def log_latency(msg, *args):
     formatted = msg % args
     logger.info(formatted)
-    latency_file.write(formatted + "\n")
-    latency_file.flush()
 
 # ---------------------------------------------------------------------------
 # Scoring constants
@@ -209,7 +210,7 @@ if _POSTGRES_AVAILABLE and PostgresSaver is not None:
                 return super().put(*args, **kwargs)
             finally:
                 log_latency("[LATENCY] pg_checkpoint_put duration=%.3fs", time.monotonic() - t0)
-        
+
         def put_writes(self, *args, **kwargs):
             import time
             t0 = time.monotonic()
@@ -471,7 +472,7 @@ def process_answer(state: InterviewState) -> dict:
 
     public_question = dict(current_question or {})
     public_question.pop("expected_concepts", None)
-    
+
     # 1. Wait for answer
     candidate_answer: str = interrupt(
         {
@@ -574,7 +575,7 @@ def process_answer(state: InterviewState) -> dict:
     if topic_key not in covered_lower:
         if score >= TOPIC_MASTERY_SCORE or cycle_complete:
             topics_covered = topics_covered + [current_topic]
-    
+
     turn_record = {
         "turn":              question_count,
         "question":          current_question,
@@ -608,7 +609,7 @@ def process_answer(state: InterviewState) -> dict:
     if not is_finished and question_proposal:
         proposed_topic = str(question_proposal.get("topic") or "").strip().lower()
         decided_topic = str(next_topic).strip().lower()
-        
+
         # Ensure Gemini didn't try to switch topic when it shouldn't, or vice-versa
         if proposed_topic == decided_topic:
             use_fallback = False
@@ -808,11 +809,11 @@ def generate_final_report(state: InterviewState) -> dict:
 def should_continue(state: InterviewState) -> str:
     if state.get("is_finished", False):
         return "finish"
-    
+
     adaptive = state.get("adaptive_decision") or {}
     if adaptive.get("use_fallback_generate", True):
         return "continue"
-        
+
     return "process_answer"""
 
 

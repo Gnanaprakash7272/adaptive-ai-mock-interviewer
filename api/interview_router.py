@@ -13,31 +13,26 @@ Endpoints:
 
 import logging
 import time
-import uuid
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-latency_file = open("latency_metrics.log", "a")
 def log_latency(msg, *args):
     formatted = msg % args
     logger.info(formatted)
-    latency_file.write(formatted + "\n")
-    latency_file.flush()
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from api.auth import UserInfo, get_current_user, limiter
-from langgraph.types import Command
-from langgraph_workflow.interview_graph import interview_graph
 import api.interview_repository as repo
+from api.auth import UserInfo, get_current_user, limiter
+from langgraph_workflow.interview_graph import interview_graph
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/interview", tags=["Interview Workflow"])
 
 
-def _public_question(question: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _public_question(question: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return the question payload candidates may see. Never includes the rubric."""
     if not question or not isinstance(question, dict):
         return question
@@ -189,7 +184,7 @@ def start_interview(
         interview_graph.invoke(initial_state, config)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    except Exception as exc:
+    except Exception:
         logger.exception("LangGraph invocation failed on start")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -400,7 +395,7 @@ def answer_question(
     _t_e0 = time.monotonic()
     try:
         interview_graph.invoke(invoke_input, config)
-    except Exception as exc:
+    except Exception:
         logger.exception("LangGraph invocation failed on answer")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -436,7 +431,7 @@ def answer_question(
 
         try:
             _t_ts = time.monotonic()
-            
+
             # Prepare arguments for the transaction
             kwargs = {
                 "answer_id": answer_id,
@@ -447,7 +442,7 @@ def answer_question(
                 "max_questions": new_values.get("max_questions"),
                 "status": "completed" if new_values.get("is_finished") else "in_progress",
             }
-            
+
             if evaluation:
                 kwargs.update({
                     "score": evaluation.get("score"),
@@ -459,7 +454,7 @@ def answer_question(
                     "feedback": evaluation.get("feedback"),
                     "needs_followup": evaluation.get("needs_followup")
                 })
-                
+
                 if decision:
                     kwargs.update({
                         "next_action": decision.get("next_action"),
@@ -467,7 +462,7 @@ def answer_question(
                         "difficulty": decision.get("difficulty"),
                         "reason": decision.get("reason")
                     })
-                    
+
             if not new_values.get("is_finished"):
                 next_q = new_values.get("current_question")
                 if next_q:
@@ -477,7 +472,7 @@ def answer_question(
                         "question_difficulty": next_q.get("difficulty"),
                         "expected_concepts": next_q.get("expected_concepts")
                     })
-                    
+
             repo.save_interview_turn_transaction(**kwargs)
             log_latency("[LATENCY] transactional_state_save interview_id=%s duration=%.3fs", interview_id, time.monotonic() - _t_ts)
 
@@ -496,7 +491,7 @@ def answer_question(
     if is_finished:
         # Always mark the interview complete in DB, even if report persistence fails.
         report = new_values.get("final_report")
-        report_error: Optional[str] = None
+        report_error: str | None = None
 
         try:
             if report:
@@ -659,7 +654,7 @@ def get_interview_report(
                 ev = evals_data[0] if isinstance(evals_data, list) else evals_data
                 score = ev.get("score")
                 missing = ev.get("missing_concepts", [])
-                
+
         questions.append({
             "question": q.get("question_text", ""),
             "answer": answer_text,

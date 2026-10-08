@@ -23,19 +23,20 @@ Tests:
     11. graph errors are converted into safe 500 API responses
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
-
 # ---------------------------------------------------------------------------
 # Build a test-time JWT for a fake user without touching Supabase.
 # ---------------------------------------------------------------------------
-import os, sys
+import os
+import sys
+import unittest
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 # Make imports work from the project root.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api.auth import create_access_token, JWT_SECRET_KEY, JWT_ALGORITHM
+from api.auth import create_access_token
 
 FAKE_USER_ID   = 42
 FAKE_USER_2_ID = 99
@@ -137,8 +138,9 @@ def _fresh_client():
     """
     # Rebuild the graph with a fresh in-memory checkpointer.
     from langgraph.checkpoint.memory import MemorySaver
-    from langgraph_workflow.interview_graph import build_interview_graph
+
     import api.interview_router as ir_module
+    from langgraph_workflow.interview_graph import build_interview_graph
     ir_module.interview_graph = build_interview_graph(checkpointer=MemorySaver())
 
     from api.main import app
@@ -181,6 +183,7 @@ class TestAuthenticationGate(unittest.TestCase):
     def test_01b_expired_jwt_rejected(self):
         """Expired JWT token must return 401."""
         from datetime import timedelta
+
         from api.auth import create_access_token
         expired_token = create_access_token({"user_id": FAKE_USER_ID, "email": FAKE_EMAIL}, expires_delta=timedelta(seconds=-1))
         resp = self.client.post(
@@ -431,7 +434,7 @@ class TestAnswerEndpoint(unittest.TestCase):
     def test_09d_duplicate_answer_gracefully_handled(self):
         """Submitting an answer when the interview is already completed gracefully returns the state."""
         iid = self._start_interview(max_q=1)
-        
+
         # Answer #1 -> completes the interview
         resp1 = self._answer(iid, "My first answer.")
         self.assertEqual(resp1.status_code, 200)

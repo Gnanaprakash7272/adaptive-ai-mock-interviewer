@@ -14,11 +14,10 @@ This test requires NO external services, NO environment variables,
 and makes NO network calls.
 """
 
-import sys
-import os
-import unittest
 import inspect
-
+import os
+import sys
+import unittest
 
 # ---------------------------------------------------------------------------
 # Ensure project root is on the path when run with:
@@ -39,8 +38,8 @@ class TestInterviewStateImport(unittest.TestCase):
         """Importing the module must not raise any exception."""
         try:
             from langgraph_workflow.interview_state import (
-                InterviewState,
                 INTERVIEW_STATE_FIELDS,
+                InterviewState,
             )
         except ImportError as exc:
             self.fail(f"Failed to import InterviewState: {exc}")
@@ -210,6 +209,7 @@ class TestInterviewStateNoFastAPI(unittest.TestCase):
             saved[key] = os.environ.pop(key, None)
         try:
             import importlib
+
             import langgraph_workflow.interview_state as module
             importlib.reload(module)
             from langgraph_workflow.interview_state import InterviewState

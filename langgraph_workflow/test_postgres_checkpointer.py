@@ -26,7 +26,6 @@ from langgraph.types import Command
 
 from langgraph_workflow import interview_graph as graph_module
 
-
 FAKE_QUESTION = {
     "question": "Explain dependency injection.",
     "topic": "FastAPI",
@@ -124,7 +123,7 @@ class TestPostgresCheckpointConfiguration(unittest.TestCase):
             patch.object(graph_module, "_postgres_checkpointer", None),
             patch.object(graph_module, "_create_checkpoint_pool", return_value=pool) as create_pool,
             patch.object(graph_module, "_initialize_checkpoint_schema") as initialize_schema,
-            patch.object(graph_module, "PostgresSaver", return_value=saver) as saver_factory,
+            patch.object(graph_module, "InstrumentedPostgresSaver", return_value=saver) as saver_factory,
         ):
             result = graph_module._get_postgres_checkpointer()
             second_result = graph_module._get_postgres_checkpointer()
@@ -205,7 +204,7 @@ class TestPostgresCheckpointPersistence(unittest.TestCase):
         with ExitStack() as stack, patch.object(
             graph_module, "_generate_question", return_value=FAKE_QUESTION
         ), patch.object(
-            graph_module, "_evaluate_answer", return_value=FAKE_EVALUATION
+            graph_module, "_process_candidate_answer", return_value={"evaluation": FAKE_EVALUATION, "question_proposal": None}
         ), patch.object(
             graph_module,
             "_decide_next_step",

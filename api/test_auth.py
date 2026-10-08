@@ -1,10 +1,19 @@
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
-from datetime import datetime, timedelta, timezone
-import jwt
 
+import jwt
+from fastapi.testclient import TestClient
+
+from api.auth import (
+    JWT_ALGORITHM,
+    JWT_SECRET_KEY,
+    decode_access_token,
+    hash_otp,
+    hash_password,
+    verify_password,
+)
 from api.main import app
-from api.auth import hash_password, verify_password, decode_access_token, hash_otp, JWT_SECRET_KEY, JWT_ALGORITHM
+
 client = TestClient(app)
 
 
@@ -32,7 +41,7 @@ def make_supabase_mock(select_data=None, insert_data=None, update_data=None):
     insert_builder = MagicMock()
     insert_builder.execute.return_value = MagicMock(data=insert_data or [])
     query_builder.insert.return_value = insert_builder
-    
+
     # update chaining
     update_builder = MagicMock()
     update_builder.eq.return_value = update_builder
@@ -315,7 +324,7 @@ def test_10_forgot_password_success():
     )
     with patch("api.auth.supabase", mock_supabase):
         response = client.post("/auth/forgot-password", json={"email": "test@example.com"})
-        
+
     assert response.status_code == 200
     assert query_builder.insert.called
     print("PASS  test_10_forgot_password_success")
@@ -323,11 +332,11 @@ def test_10_forgot_password_success():
 def test_11_verify_otp_success():
     otp = "123456"
     hashed = hash_otp(otp)
-    expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    expires = (datetime.now(UTC) + timedelta(minutes=10)).isoformat()
     mock_supabase, query_builder = make_supabase_mock(
         select_data=[{"user_id": 1}, {"id": 1, "user_id": 1, "otp_hash": hashed, "expires_at": expires, "attempts": 0}]
     )
-    
+
     # We need a custom mock for supabase because select is called twice with different tables
     def side_effect(table_name):
         mock = MagicMock()
@@ -336,26 +345,26 @@ def test_11_verify_otp_success():
         select_builder.is_.return_value = select_builder
         select_builder.order.return_value = select_builder
         select_builder.limit.return_value = select_builder
-        
+
         if table_name == "users":
             select_builder.execute.return_value = MagicMock(data=[{"user_id": 1}])
         elif table_name == "password_reset_otps":
             select_builder.execute.return_value = MagicMock(data=[{"id": 1, "user_id": 1, "otp_hash": hashed, "expires_at": expires, "attempts": 0}])
-            
+
         mock.select.return_value = select_builder
-        
+
         update_builder = MagicMock()
         update_builder.eq.return_value = update_builder
         update_builder.execute.return_value = MagicMock()
         mock.update.return_value = update_builder
         return mock
-        
+
     mock_supabase = MagicMock()
     mock_supabase.table.side_effect = side_effect
-    
+
     with patch("api.auth.supabase", mock_supabase):
         response = client.post("/auth/verify-reset-otp", json={"email": "test@example.com", "otp": otp})
-        
+
     assert response.status_code == 200
     assert "reset_token" in response.json()
     print("PASS  test_11_verify_otp_success")
@@ -363,26 +372,26 @@ def test_11_verify_otp_success():
 def test_12_reset_password_success():
     token_payload = {"sub": "1", "purpose": "password_reset"}
     token = jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    
+
     def side_effect(table_name):
         mock = MagicMock()
         select_builder = MagicMock()
         select_builder.eq.return_value = select_builder
         select_builder.execute.return_value = MagicMock(data=[{"user_id": 1}])
         mock.select.return_value = select_builder
-        
+
         update_builder = MagicMock()
         update_builder.eq.return_value = update_builder
         update_builder.execute.return_value = MagicMock()
         mock.update.return_value = update_builder
         return mock
-        
+
     mock_supabase = MagicMock()
     mock_supabase.table.side_effect = side_effect
-    
+
     with patch("api.auth.supabase", mock_supabase):
         response = client.post("/auth/reset-password", json={"email": "test@example.com", "reset_token": token, "new_password": "NewPassword123!"})
-        
+
     assert response.status_code == 200
     print("PASS  test_12_reset_password_success")
 

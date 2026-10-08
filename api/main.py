@@ -1,44 +1,42 @@
-import os
 import logging
-from typing import Optional
+import os
 
-from fastapi import FastAPI, File, Request, UploadFile, HTTPException, Depends, Query
-from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from resume_intelligence.text_extract import extract_text
-from resume_intelligence.text_clean import clean_resume_text, strip_pii
-from resume_intelligence.resume_analyzer import analyze_resume
-from api.auth import router as auth_router, get_current_user, UserInfo, limiter
-from api.interview_router import router as interview_router
-from api.resume_repository import save_candidate_profile, get_candidate_profile
-from api.role_catalogue import ROLE_CATALOGUE
 import api.interview_repository as repo
+from api.auth import UserInfo, get_current_user, limiter
+from api.auth import router as auth_router
 from api.errors import (
+    CODE_INTERNAL_SERVER_ERROR,
+    CODE_VALIDATION_ERROR,
+    MAX_RESUME_SIZE,
+    AIServiceTimeoutError,
+    AIServiceUnavailableError,
     APIError,
     EmptyFileError,
+    EmptyResumeError,
+    FileTooLargeError,
+    InternalServerError,
     InvalidFileTypeError,
     InvalidPDFError,
-    FileTooLargeError,
-    EmptyResumeError,
-    ResumeCleaningFailedError,
-    AIServiceUnavailableError,
-    AIServiceTimeoutError,
     ResumeAnalysisFailedError,
-    InternalServerError,
-    MAX_RESUME_SIZE,
-    make_error_payload,
+    ResumeCleaningFailedError,
     make_error_response,
-    CODE_VALIDATION_ERROR,
-    CODE_INTERNAL_SERVER_ERROR,
 )
+from api.interview_router import router as interview_router
+from api.resume_repository import get_candidate_profile, save_candidate_profile
+from api.role_catalogue import ROLE_CATALOGUE
+from resume_intelligence.resume_analyzer import analyze_resume
+from resume_intelligence.text_clean import clean_resume_text, strip_pii
+from resume_intelligence.text_extract import extract_text
 
 logger = logging.getLogger(__name__)
 
-from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(title="AI MOCKORA API")
 
@@ -63,6 +61,7 @@ async def api_error_handler(request, exc: APIError):
 
 
 from fastapi.encoders import jsonable_encoder
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc: RequestValidationError):
@@ -291,8 +290,8 @@ def update_candidate_profile_endpoint(current_user: UserInfo = Depends(get_curre
 
 @app.get("/roles")
 def get_roles(
-    search: Optional[str] = Query(None),
-    difficulty: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    difficulty: str | None = Query(None),
 ):
     """
     Returns the full role catalogue, optionally filtered by search query and difficulty.
@@ -318,6 +317,7 @@ def get_roles(
 
 from api.role_intelligence import rank_recommendations, serialize_recommendation
 
+
 @app.get("/roles/recommend")
 def recommend_roles(current_user: UserInfo = Depends(get_current_user)):
     """
@@ -340,7 +340,7 @@ def recommend_roles(current_user: UserInfo = Depends(get_current_user)):
         )
 
     top_matches = rank_recommendations(profile, ROLE_CATALOGUE, top_n=15, min_score=1)
-    
+
     # Serialize the results back to dictionaries, pairing with the original role dict
     results = []
     for match in top_matches:
@@ -400,7 +400,7 @@ def get_interview_history(current_user: UserInfo = Depends(get_current_user)):
         completed_at = row.get("completed_at")
         if started_at and completed_at:
             try:
-                from datetime import datetime, timezone
+                from datetime import datetime
                 fmt = "%Y-%m-%dT%H:%M:%S"
                 # Strip microseconds and timezone suffix for simple parsing
                 s = str(started_at)[:19]

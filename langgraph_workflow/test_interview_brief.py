@@ -2,11 +2,10 @@ import unittest
 
 from langgraph_workflow.interview_brief import (
     build_interview_brief,
-    find_catalogue_role,
     fallback_role_topics,
+    find_catalogue_role,
     plan_interview_topics,
 )
-
 
 PROFILE = {
     "candidate": {"name": "Ada", "email": "ada@example.com", "phone": "555-0100"},

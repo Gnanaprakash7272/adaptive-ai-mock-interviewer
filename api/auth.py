@@ -1,23 +1,22 @@
+import hashlib
+import hmac
 import os
 import re
-import hmac
-import hashlib
 import secrets
-import string
 import smtplib
-from email.mime.text import MIMEText
+import string
+from datetime import UTC, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from email.mime.text import MIMEText
+from typing import Any
 
 import jwt
-from fastapi import APIRouter, HTTPException, Depends, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 
 from api.db import supabase
-
 
 # ---------------------------------------------------------------------------
 # Client-IP resolution for rate limiting
@@ -177,19 +176,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ============================================================================
 
 def create_access_token(
-    data: Dict[str, Any],
-    expires_delta: Optional[timedelta] = None,
+    data: dict[str, Any],
+    expires_delta: timedelta | None = None,
 ) -> str:
     """Generate a signed JWT access token."""
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
+    to_encode.update({"exp": expire, "iat": datetime.now(UTC)})
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def decode_access_token(token: str) -> Dict[str, Any]:
+def decode_access_token(token: str) -> dict[str, Any]:
     """Decode and validate a JWT access token."""
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
@@ -410,7 +409,7 @@ def login(request: Request, body: LoginRequest):
 # ============================================================================
 
 def get_current_user(
-    auth_credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    auth_credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> UserInfo:
     """Dependency to extract and validate the authenticated user from the Bearer token.
 
@@ -566,7 +565,7 @@ def forgot_password(request: Request, body: ForgotPasswordRequest):
 
             otp = generate_otp()
             otp_hash = hash_otp(otp)
-            expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+            expires_at = (datetime.now(UTC) + timedelta(minutes=10)).isoformat()
 
             supabase.table("password_reset_otps").insert({
                 "user_id": user_id,
@@ -629,7 +628,7 @@ def verify_reset_otp(request: Request, body: VerifyOTPRequest):
         expires_at = datetime.fromisoformat(
             otp_record["expires_at"].replace("Z", "+00:00")
         )
-        if datetime.now(timezone.utc) > expires_at:
+        if datetime.now(UTC) > expires_at:
             raise invalid_otp_exception
 
         if hash_otp(otp) != otp_record["otp_hash"]:
@@ -639,7 +638,7 @@ def verify_reset_otp(request: Request, body: VerifyOTPRequest):
             raise invalid_otp_exception
 
         supabase.table("password_reset_otps").update(
-            {"verified_at": datetime.now(timezone.utc).isoformat()}
+            {"verified_at": datetime.now(UTC).isoformat()}
         ).eq("id", otp_record["id"]).execute()
 
         token_payload = {

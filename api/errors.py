@@ -13,9 +13,9 @@ Provides consistent API error responses conforming to:
 }
 """
 
-from typing import Any, Dict, Optional
-from fastapi.responses import JSONResponse
+from typing import Any
 
+from fastapi.responses import JSONResponse
 
 # =============================================================================
 # CONSTANTS
@@ -45,7 +45,7 @@ CODE_NOT_FOUND = "NOT_FOUND"
 # PAYLOAD BUILDERS
 # =============================================================================
 
-def make_error_payload(code: str, message: str) -> Dict[str, Any]:
+def make_error_payload(code: str, message: str) -> dict[str, Any]:
     """
     Construct standard error dictionary.
     Includes 'detail' as backward-compatibility alias for clients/tests.
@@ -64,7 +64,7 @@ def make_error_response(
     status_code: int,
     code: str,
     message: str,
-    headers: Optional[Dict[str, str]] = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Helper to build a FastAPI JSONResponse for standard errors."""
     return JSONResponse(
@@ -89,7 +89,7 @@ class APIError(Exception):
         status_code: int,
         code: str,
         message: str,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
     ):
         self.status_code = status_code
         self.code = code

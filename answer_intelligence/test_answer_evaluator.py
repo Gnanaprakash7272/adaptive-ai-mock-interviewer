@@ -10,7 +10,6 @@ import pytest
 
 from answer_intelligence.answer_evaluator import evaluate_answer
 
-
 VALID_EVALUATION = {
     "score": 7,
     "correctness": 7,

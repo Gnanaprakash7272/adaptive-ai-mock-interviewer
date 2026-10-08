@@ -5,7 +5,6 @@ import re
 # Environment is loaded once at application startup (api/main.py or uvicorn entrypoint).
 # Calling load_dotenv(override=True) in module scope would silently overwrite
 # OS-level secrets already set by the deployment environment.
-
 from ai_schemas import QuestionOutput, ValidationError, parse_model
 from gemini_config import call_gemini_json
 from langgraph_workflow.interview_brief import build_interview_brief

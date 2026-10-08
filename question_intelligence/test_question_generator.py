@@ -10,7 +10,6 @@ import pytest
 
 from question_intelligence.question_generator import generate_question
 
-
 SAMPLE_PROFILE = {
     "candidate": {"name": "Alice"},
     "skills": {"programming_languages": ["Python"], "frameworks": ["FastAPI"]},

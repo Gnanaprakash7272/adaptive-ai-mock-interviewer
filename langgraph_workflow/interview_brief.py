@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Optional
+from typing import Any
 
 from api.role_catalogue import ROLE_CATALOGUE
 from api.role_intelligence import (
@@ -80,12 +80,12 @@ def _title_match_score(query: str, role_title: str) -> int:
     return overlap * 20
 
 
-def find_catalogue_role(role_title: str) -> Optional[dict[str, Any]]:
+def find_catalogue_role(role_title: str) -> dict[str, Any] | None:
     """Return the best catalogue role for a title, or None for unknown roles."""
     if not role_title or not role_title.strip():
         return None
 
-    best: Optional[dict[str, Any]] = None
+    best: dict[str, Any] | None = None
     best_score = 0
     for role in ROLE_CATALOGUE:
         score = _title_match_score(role_title, str(role.get("title", "")))
@@ -205,7 +205,7 @@ def _item_overlaps_role(technologies: list, role_tokens: set[str]) -> bool:
     return False
 
 
-def _select_projects(profile: dict[str, Any], role: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
+def _select_projects(profile: dict[str, Any], role: dict[str, Any] | None) -> list[dict[str, Any]]:
     projects = [p for p in (profile.get("projects") or []) if isinstance(p, dict)]
     if not projects:
         return []
@@ -224,7 +224,7 @@ def _select_projects(profile: dict[str, Any], role: Optional[dict[str, Any]]) ->
     return selected[:4]
 
 
-def _select_experience(profile: dict[str, Any], role: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
+def _select_experience(profile: dict[str, Any], role: dict[str, Any] | None) -> list[dict[str, Any]]:
     experience = [e for e in (profile.get("experience") or []) if isinstance(e, dict)]
     if not experience:
         return []

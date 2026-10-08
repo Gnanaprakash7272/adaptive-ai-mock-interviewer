@@ -4,7 +4,6 @@ from unittest.mock import patch
 from ai_schemas import EvaluationOutput, ValidationError, parse_model
 from answer_intelligence.answer_evaluator import evaluate_answer
 
-
 VALID = {
     "score": 7,
     "correctness": 7,

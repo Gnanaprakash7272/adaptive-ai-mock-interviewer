@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
 
 # =============================================================================
 # WEIGHTS — single place to adjust scoring
@@ -55,7 +54,7 @@ assert abs((REQUIRED_WEIGHT + PREFERRED_WEIGHT + PROJECT_WEIGHT + EXPERIENCE_WEI
 #     string. This prevents "java" matching "javascript".
 # =============================================================================
 
-_ALIASES: Dict[str, str] = {
+_ALIASES: dict[str, str] = {
     # Python
     "py": "python",
 
@@ -224,9 +223,9 @@ def normalize_skill(raw: str) -> str:
     return cleaned
 
 
-def _build_skill_tokens(raw_skills: List[str]) -> Set[str]:
+def _build_skill_tokens(raw_skills: list[str]) -> set[str]:
     """Return a set of normalised canonical skill tokens from a raw list."""
-    result: Set[str] = set()
+    result: set[str] = set()
     for s in raw_skills:
         if s:
             result.add(normalize_skill(str(s)))
@@ -256,16 +255,16 @@ class CandidateIntelligence:
     used exclusively by the matching engine.
     """
     # All skills from the skills dict (lower-cased, normalised)
-    skill_tokens: Set[str] = field(default_factory=set)
+    skill_tokens: set[str] = field(default_factory=set)
 
     # {canonical_skill_token → list of (project_name)}
-    project_skill_map: Dict[str, List[str]] = field(default_factory=dict)
+    project_skill_map: dict[str, list[str]] = field(default_factory=dict)
 
     # {canonical_skill_token → list of (company_name)}
-    experience_skill_map: Dict[str, List[str]] = field(default_factory=dict)
+    experience_skill_map: dict[str, list[str]] = field(default_factory=dict)
 
     @property
-    def all_tokens(self) -> Set[str]:
+    def all_tokens(self) -> set[str]:
         """All tokens reachable from any source."""
         combined = set(self.skill_tokens)
         combined.update(self.project_skill_map.keys())
@@ -273,7 +272,7 @@ class CandidateIntelligence:
         return combined
 
 
-def extract_candidate_evidence(profile: Dict) -> CandidateIntelligence:
+def extract_candidate_evidence(profile: dict) -> CandidateIntelligence:
     """
     Build a CandidateIntelligence from a raw candidate profile dict.
 
@@ -327,7 +326,7 @@ def extract_candidate_evidence(profile: Dict) -> CandidateIntelligence:
 # SKILL MATCHING HELPER
 # =============================================================================
 
-def _skill_matches(candidate_tokens: Set[str], role_skill: str) -> bool:
+def _skill_matches(candidate_tokens: set[str], role_skill: str) -> bool:
     """
     Test whether a candidate token set covers a role skill.
 
@@ -364,7 +363,7 @@ def _skill_matches(candidate_tokens: Set[str], role_skill: str) -> bool:
 
 @dataclass
 class SkillGroupMatch:
-    matched: List[str]
+    matched: list[str]
     total: int
 
     @property
@@ -379,8 +378,8 @@ class SkillGroupMatch:
 
 @dataclass
 class SkillGaps:
-    required: List[str] = field(default_factory=list)
-    preferred: List[str] = field(default_factory=list)
+    required: list[str] = field(default_factory=list)
+    preferred: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -390,15 +389,15 @@ class RoleMatchResult:
     category: str
     match_score: int                        # 0-100
 
-    matched_skills: List[str]               # all matched skill display names (deduped)
+    matched_skills: list[str]               # all matched skill display names (deduped)
     skill_gaps: SkillGaps
 
     required_match: SkillGroupMatch
     preferred_match: SkillGroupMatch
     related_match: SkillGroupMatch
 
-    project_evidence: List[SkillEvidence]
-    experience_evidence: List[SkillEvidence]
+    project_evidence: list[SkillEvidence]
+    experience_evidence: list[SkillEvidence]
 
     reason: str
 
@@ -410,7 +409,7 @@ class RoleMatchResult:
 def _collect_evidence(
     intel: CandidateIntelligence,
     role_skill: str,
-) -> Tuple[bool, Optional[SkillEvidence]]:
+) -> tuple[bool, SkillEvidence | None]:
     """
     Check if role_skill is supported by experience evidence first,
     then project evidence, then plain skill pool.
@@ -448,30 +447,30 @@ def _collect_evidence(
 
 def match_role_skills(
     intel: CandidateIntelligence,
-    role: Dict,
+    role: dict,
 ) -> RoleMatchResult:
     """
     Full match computation for a single role.
 
     Returns a RoleMatchResult with score, evidence, gaps, and reason.
     """
-    required_skills: List[str] = role.get("requiredSkills", [])
-    preferred_skills: List[str] = role.get("preferredSkills", [])
-    related_skills: List[str] = role.get("relatedSkills", [])
+    required_skills: list[str] = role.get("requiredSkills", [])
+    preferred_skills: list[str] = role.get("preferredSkills", [])
+    related_skills: list[str] = role.get("relatedSkills", [])
 
-    matched_required: List[str] = []
-    missed_required: List[str] = []
-    matched_preferred: List[str] = []
-    missed_preferred: List[str] = []
-    matched_related: List[str] = []
+    matched_required: list[str] = []
+    missed_required: list[str] = []
+    matched_preferred: list[str] = []
+    missed_preferred: list[str] = []
+    matched_related: list[str] = []
 
-    proj_evidence: List[SkillEvidence] = []
-    exp_evidence: List[SkillEvidence] = []
+    proj_evidence: list[SkillEvidence] = []
+    exp_evidence: list[SkillEvidence] = []
 
-    all_matched_display: List[str] = []
-    seen_matched: Set[str] = set()
+    all_matched_display: list[str] = []
+    seen_matched: set[str] = set()
 
-    def _process(skill_list: List[str], matched_out: List[str], missed_out: List[str]):
+    def _process(skill_list: list[str], matched_out: list[str], missed_out: list[str]):
         for skill in skill_list:
             found, ev = _collect_evidence(intel, skill)
             if found:
@@ -543,9 +542,9 @@ def match_role_skills(
 
 def generate_reason(
     role_title: str,
-    matched_required: List[str],
-    proj_evidence: List[SkillEvidence],
-    exp_evidence: List[SkillEvidence],
+    matched_required: list[str],
+    proj_evidence: list[SkillEvidence],
+    exp_evidence: list[SkillEvidence],
     match_score: int,
 ) -> str:
     """
@@ -553,7 +552,7 @@ def generate_reason(
 
     Does NOT invent, assume, or fabricate any claim.
     """
-    parts: List[str] = []
+    parts: list[str] = []
 
     # Core skill mention (max 3 names for readability)
     if matched_required:
@@ -604,11 +603,11 @@ def generate_reason(
 # =============================================================================
 
 def rank_recommendations(
-    profile: Dict,
-    role_catalogue: List[Dict],
+    profile: dict,
+    role_catalogue: list[dict],
     top_n: int = 5,
     min_score: int = 1,
-) -> List[RoleMatchResult]:
+) -> list[RoleMatchResult]:
     """
     Run the full Role Intelligence Engine against a candidate profile.
 
@@ -623,7 +622,7 @@ def rank_recommendations(
     if not intel.all_tokens:
         return []
 
-    results: List[RoleMatchResult] = []
+    results: list[RoleMatchResult] = []
     for role in role_catalogue:
         result = match_role_skills(intel, role)
         if result.match_score >= min_score:
@@ -637,7 +636,7 @@ def rank_recommendations(
 # SERIALISATION — convert RoleMatchResult + role dict to API response dict
 # =============================================================================
 
-def serialize_recommendation(result: RoleMatchResult, role: Dict) -> Dict:
+def serialize_recommendation(result: RoleMatchResult, role: dict) -> dict:
     """
     Produce the API response dict for a single recommendation.
     Preserves all existing fields (id, title, department, difficulty, etc.)

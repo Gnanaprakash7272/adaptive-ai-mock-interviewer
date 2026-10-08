@@ -25,8 +25,8 @@ import os
 import time
 import uuid
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.e2e   # applies to every test in this module
 

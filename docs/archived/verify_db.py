@@ -1,10 +1,9 @@
-import os
-import sys
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
 from api.db import supabase
 from api.resume_repository import get_candidate_profile
+
 
 def verify():
     # 1. Identify user (from latest resume, as users table has RLS)
@@ -46,7 +45,7 @@ def verify():
             res = supabase.table(table).select('*', count='exact').eq('resume_id', resume_id).execute()
             count = len(res.data) if res.data else 0
             print(f"  - {table}: {count}")
-            
+
             if table == 'projects' and count > 0:
                 # Check project_technologies
                 project_ids = [p['project_id'] for p in res.data]
@@ -67,7 +66,7 @@ def verify():
             print("E. whether GET /candidate/profile matches DB data: FAIL (Mismatched or empty)")
     except Exception as e:
         print(f"E. whether GET /candidate/profile matches DB data: FAIL ({e})")
-        
+
     print("G. exact remaining issue: Check output above for any FAILs")
 
 if __name__ == '__main__':

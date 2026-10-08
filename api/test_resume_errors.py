@@ -10,27 +10,25 @@ and global exception handling, ensuring:
 - Gemini and DB calls are cleanly mocked
 """
 
-import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from api.auth import create_access_token
-from api.main import app
 from api.errors import (
+    CODE_AI_SERVICE_TIMEOUT,
+    CODE_AI_SERVICE_UNAVAILABLE,
     CODE_EMPTY_FILE,
+    CODE_EMPTY_RESUME,
+    CODE_FILE_TOO_LARGE,
+    CODE_INTERNAL_SERVER_ERROR,
     CODE_INVALID_FILE_TYPE,
     CODE_INVALID_PDF,
-    CODE_FILE_TOO_LARGE,
-    CODE_EMPTY_RESUME,
-    CODE_RESUME_CLEANING_FAILED,
-    CODE_AI_SERVICE_UNAVAILABLE,
-    CODE_AI_SERVICE_TIMEOUT,
     CODE_RESUME_ANALYSIS_FAILED,
-    CODE_INTERNAL_SERVER_ERROR,
+    CODE_RESUME_CLEANING_FAILED,
     MAX_RESUME_SIZE,
 )
+from api.main import app
 
 client = TestClient(app)
 

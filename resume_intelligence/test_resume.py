@@ -11,13 +11,12 @@ import pytest
 
 from resume_intelligence.resume_analyzer import (
     CANDIDATE_PROFILE_SCHEMA,
-    analyze_resume,
+    _clean_profile,
     _dedupe_list,
     _merge_with_schema,
-    _clean_profile,
+    analyze_resume,
     build_user_prompt,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

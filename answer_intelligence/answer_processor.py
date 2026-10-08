@@ -1,9 +1,9 @@
 import json
 
 from ai_schemas import ProcessAnswerOutput, ValidationError, parse_model
-from gemini_config import call_gemini_json
-from question_intelligence.question_generator import _sanitize_user_input, QUESTION_SCHEMA
 from answer_intelligence.answer_evaluator import EVALUATION_SCHEMA
+from gemini_config import call_gemini_json
+from question_intelligence.question_generator import QUESTION_SCHEMA, _sanitize_user_input
 
 PROCESS_ANSWER_SCHEMA = {
     "evaluation": EVALUATION_SCHEMA,

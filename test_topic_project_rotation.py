@@ -1,5 +1,6 @@
 from adaptive_intelligence.adaptive_engine import _get_next_topic, decide_next_step
 
+
 def test_topic_rotation():
     role_topics = ["Python", "Machine Learning", "Statistics"]
     candidate_topics = ["SQL", "Fraud Detection"]

@@ -5,10 +5,8 @@ Replaces the old script-style test_adaptive_engine.py that only printed
 output and had no assertions.  Tests the current decide_next_step API
 including the topics_visited parameter added in Phase 1.
 """
-import pytest
 
 from adaptive_intelligence.adaptive_engine import decide_next_step
-
 
 TOPICS = ["Python", "FastAPI", "PostgreSQL", "System Design"]
 CANDIDATE_TOPICS = ["Python", "FastAPI"]

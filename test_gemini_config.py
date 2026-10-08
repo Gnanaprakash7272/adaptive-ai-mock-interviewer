@@ -8,14 +8,13 @@ All network calls are mocked via patch("gemini_config.genai.Client").
 """
 import json
 import os
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 os.environ.setdefault("GEMINI_API_KEY", "MOCK_KEY_FOR_TESTS")
 
 import gemini_config  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers

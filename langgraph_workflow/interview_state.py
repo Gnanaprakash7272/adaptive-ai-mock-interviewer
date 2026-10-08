@@ -18,7 +18,8 @@ in the _InterviewStateOptional mixin so callers are not forced to
 supply them at construction time.
 """
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal
+
 try:
     # Python 3.11+
     from typing import TypedDict

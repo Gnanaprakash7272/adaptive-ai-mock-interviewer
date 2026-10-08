@@ -15,7 +15,6 @@ This file ONLY handles:
 """
 import json
 import logging
-import os
 
 from gemini_config import call_gemini_json
 

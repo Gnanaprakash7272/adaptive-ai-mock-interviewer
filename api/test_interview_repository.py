@@ -11,19 +11,20 @@ complete isolation — no side_effect bleed between tests.
 """
 
 import json
-import unittest
-from unittest.mock import MagicMock, patch
 import sys
 import types
+import unittest
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Bootstrap: If api.db is missing env vars, mock it so we can import.
 # ---------------------------------------------------------------------------
 
 try:
-    import api.db
+    pass
 except ValueError:
-    import sys, types
+    import sys
+    import types
     from unittest.mock import MagicMock
     _fake_db = types.ModuleType("api.db")
     _fake_db.supabase = MagicMock()
@@ -31,8 +32,6 @@ except ValueError:
     sys.modules["api.db"] = _fake_db
 
 import api.interview_repository as repo  # noqa: E402
-
-
 
 # ---------------------------------------------------------------------------
 # Base class: gives each test a freshly-built supabase mock
@@ -414,7 +413,7 @@ class TestCreateInterviewReport(RepoTestCase):
             interview_knowledge_gaps=["REST APIs"]
         )
         self.assertEqual(result["report_id"], 50)
-        
+
         payload = self._last_insert_payload()
         self.assertEqual(payload["profile_strengths"], ["Python", "AWS"])
         self.assertEqual(payload["interview_demonstrated_strengths"], ["OOP"])
@@ -424,7 +423,7 @@ class TestCreateInterviewReport(RepoTestCase):
         self._insert_chain("interview_reports", [{"report_id": 51}])
         topics = ["FastAPI", "LangGraph", "Supabase"]
         repo.create_interview_report(
-            interview_id=2, 
+            interview_id=2,
             topics_covered=topics,
             profile_strengths=[],
             interview_demonstrated_strengths=[],

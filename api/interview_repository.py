@@ -18,17 +18,16 @@ missing_concepts  : Python list  → text column   (JSON-serialised to string; s
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from api.db import supabase
-
 
 # ---------------------------------------------------------------------------
 # Internal helper
 # ---------------------------------------------------------------------------
 
-def _single(result) -> Dict[str, Any]:
+def _single(result) -> dict[str, Any]:
     """Return the first row from a Supabase result or raise RuntimeError."""
     if not result.data:
         raise RuntimeError("Supabase returned no rows for the operation.")
@@ -44,8 +43,8 @@ def create_interview(
     user_id: int,
     role: str,
     max_questions: int,
-    resume_id: Optional[int] = None,
-) -> Dict[str, Any]:
+    resume_id: int | None = None,
+) -> dict[str, Any]:
     """
     Insert a new row into `interviews` and return it.
 
@@ -56,7 +55,7 @@ def create_interview(
 
     Returns the full created row including `interview_id`.
     """
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "user_id": user_id,
         "role": role,
         "max_questions": max_questions,
@@ -82,19 +81,19 @@ def create_interview(
 def update_interview_state(
     interview_id: int,
     *,
-    current_topic: Optional[str] = None,
-    current_difficulty: Optional[str] = None,
-    question_count: Optional[int] = None,
-    max_questions: Optional[int] = None,
-    status: Optional[str] = None,
-) -> Dict[str, Any]:
+    current_topic: str | None = None,
+    current_difficulty: str | None = None,
+    question_count: int | None = None,
+    max_questions: int | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
     """
     Update mutable session-state fields on an interview row.
 
     Only fields explicitly passed (non-None) are included in the UPDATE.
     Returns the updated row.
     """
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
 
     if current_topic is not None:
         updates["current_topic"] = current_topic
@@ -134,12 +133,12 @@ def create_question(
     *,
     interview_id: int,
     question_text: str,
-    topic: Optional[str] = None,
-    difficulty: Optional[str] = None,
-    question_type: Optional[str] = None,
-    question_order: Optional[int] = None,
-    expected_concepts: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    topic: str | None = None,
+    difficulty: str | None = None,
+    question_type: str | None = None,
+    question_order: int | None = None,
+    expected_concepts: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Insert a question row linked to an interview.
 
@@ -148,7 +147,7 @@ def create_question(
 
     Returns the created row including `question_id`.
     """
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "interview_id": interview_id,
         "question_text": question_text,
     }
@@ -183,7 +182,7 @@ def create_answer(
     *,
     question_id: int,
     answer_text: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Insert an answer row for a question.
 
@@ -191,7 +190,7 @@ def create_answer(
 
     Returns the created row including `answer_id`.
     """
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "question_id": question_id,
         "answer_text": answer_text,
     }
@@ -211,7 +210,7 @@ def create_answer(
 # 4b. get_answer_by_question_id
 # ---------------------------------------------------------------------------
 
-def get_answer_by_question_id(question_id: int) -> Optional[Dict[str, Any]]:
+def get_answer_by_question_id(question_id: int) -> dict[str, Any] | None:
     """
     Fetch an existing answer by its unique question_id.
     Used to recover safely if an answer submission is retried.
@@ -242,35 +241,35 @@ def save_interview_turn_transaction(
     answer_id: int,
     interview_id: int,
     # evaluation args
-    score: Optional[float] = None,
-    correctness: Optional[Any] = None,
-    completeness: Optional[Any] = None,
-    technical_depth: Optional[Any] = None,
-    confidence: Optional[Any] = None,
-    missing_concepts: Optional[List[str]] = None,
-    feedback: Optional[str] = None,
-    needs_followup: Optional[bool] = None,
+    score: float | None = None,
+    correctness: Any | None = None,
+    completeness: Any | None = None,
+    technical_depth: Any | None = None,
+    confidence: Any | None = None,
+    missing_concepts: list[str] | None = None,
+    feedback: str | None = None,
+    needs_followup: bool | None = None,
     # decision args
-    next_action: Optional[str] = None,
-    next_topic: Optional[str] = None,
-    difficulty: Optional[str] = None,
-    reason: Optional[str] = None,
+    next_action: str | None = None,
+    next_topic: str | None = None,
+    difficulty: str | None = None,
+    reason: str | None = None,
     # interview args
-    current_topic: Optional[str] = None,
-    current_difficulty: Optional[str] = None,
-    question_count: Optional[int] = None,
-    max_questions: Optional[int] = None,
-    status: Optional[str] = None,
+    current_topic: str | None = None,
+    current_difficulty: str | None = None,
+    question_count: int | None = None,
+    max_questions: int | None = None,
+    status: str | None = None,
     # question args
-    question_text: Optional[str] = None,
-    question_topic: Optional[str] = None,
-    question_difficulty: Optional[str] = None,
-    expected_concepts: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    question_text: str | None = None,
+    question_topic: str | None = None,
+    question_difficulty: str | None = None,
+    expected_concepts: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Save the evaluation, decision, interview state, and optional new question atomically using the save_interview_turn RPC.
     """
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "p_answer_id": answer_id,
         "p_interview_id": interview_id,
         "p_score": score,
@@ -295,7 +294,7 @@ def save_interview_turn_transaction(
         "p_question_difficulty": question_difficulty,
         "p_expected_concepts": json.dumps(expected_concepts, ensure_ascii=False) if expected_concepts is not None else None,
     }
-    
+
     # Remove None values to use the SQL DEFAULT NULL defined in the RPC
     payload = {k: v for k, v in payload.items() if v is not None}
 
@@ -319,15 +318,15 @@ def save_interview_turn_transaction(
 def create_evaluation(
     *,
     answer_id: int,
-    score: Optional[float] = None,
-    correctness: Optional[Any] = None,
-    completeness: Optional[Any] = None,
-    technical_depth: Optional[Any] = None,
-    confidence: Optional[Any] = None,
-    missing_concepts: Optional[List[str]] = None,
-    feedback: Optional[str] = None,
-    needs_followup: Optional[bool] = None,
-) -> Dict[str, Any]:
+    score: float | None = None,
+    correctness: Any | None = None,
+    completeness: Any | None = None,
+    technical_depth: Any | None = None,
+    confidence: Any | None = None,
+    missing_concepts: list[str] | None = None,
+    feedback: str | None = None,
+    needs_followup: bool | None = None,
+) -> dict[str, Any]:
     """
     Insert an evaluation row linked to an answer.
 
@@ -340,7 +339,7 @@ def create_evaluation(
 
     Returns the created row including `evaluation_id`.
     """
-    payload: Dict[str, Any] = {"answer_id": answer_id}
+    payload: dict[str, Any] = {"answer_id": answer_id}
 
     if score is not None:
         payload["score"] = score
@@ -378,17 +377,17 @@ def create_evaluation(
 def create_adaptive_decision(
     *,
     evaluation_id: int,
-    next_action: Optional[str] = None,
-    next_topic: Optional[str] = None,
-    difficulty: Optional[str] = None,
-    reason: Optional[str] = None,
-) -> Dict[str, Any]:
+    next_action: str | None = None,
+    next_topic: str | None = None,
+    difficulty: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
     """
     Insert an adaptive_decisions row linked to an evaluation.
 
     Returns the created row including `decision_id`.
     """
-    payload: Dict[str, Any] = {"evaluation_id": evaluation_id}
+    payload: dict[str, Any] = {"evaluation_id": evaluation_id}
 
     if next_action is not None:
         payload["next_action"] = next_action
@@ -414,7 +413,7 @@ def create_adaptive_decision(
 # 7. complete_interview
 # ---------------------------------------------------------------------------
 
-def complete_interview(interview_id: int) -> Dict[str, Any]:
+def complete_interview(interview_id: int) -> dict[str, Any]:
     """
     Mark an interview as completed.
 
@@ -424,7 +423,7 @@ def complete_interview(interview_id: int) -> Dict[str, Any]:
 
     Returns the updated row.
     """
-    now_utc = datetime.now(timezone.utc).isoformat()
+    now_utc = datetime.now(UTC).isoformat()
     updates = {
         "status": "completed",
         "completed_at": now_utc,
@@ -453,16 +452,16 @@ def complete_interview(interview_id: int) -> Dict[str, Any]:
 def create_interview_report(
     *,
     interview_id: int,
-    overall_score: Optional[float] = None,
-    strengths: Optional[List[str]] = None,
-    weaknesses: Optional[List[str]] = None,
-    recommendations: Optional[List[str]] = None,
-    summary: Optional[str] = None,
-    topics_covered: Optional[List[str]] = None,
-    profile_strengths: Optional[List[str]] = None,
-    interview_demonstrated_strengths: Optional[List[str]] = None,
-    interview_knowledge_gaps: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    overall_score: float | None = None,
+    strengths: list[str] | None = None,
+    weaknesses: list[str] | None = None,
+    recommendations: list[str] | None = None,
+    summary: str | None = None,
+    topics_covered: list[str] | None = None,
+    profile_strengths: list[str] | None = None,
+    interview_demonstrated_strengths: list[str] | None = None,
+    interview_knowledge_gaps: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Insert an interview_reports row.
 
@@ -472,7 +471,7 @@ def create_interview_report(
 
     Returns the created row including `report_id`.
     """
-    payload: Dict[str, Any] = {"interview_id": interview_id}
+    payload: dict[str, Any] = {"interview_id": interview_id}
 
     if overall_score is not None:
         payload["overall_score"] = overall_score
@@ -508,7 +507,7 @@ def create_interview_report(
 # 9. get_interview
 # ---------------------------------------------------------------------------
 
-def get_interview(interview_id: int) -> Optional[Dict[str, Any]]:
+def get_interview(interview_id: int) -> dict[str, Any] | None:
     """
     Fetch a single interview row by primary key.
 
@@ -536,7 +535,7 @@ def get_interview(interview_id: int) -> Optional[Dict[str, Any]]:
 # 10. get_interview_questions
 # ---------------------------------------------------------------------------
 
-def get_interview_questions(interview_id: int) -> List[Dict[str, Any]]:
+def get_interview_questions(interview_id: int) -> list[dict[str, Any]]:
     """
     Fetch all questions for an interview, ordered by question_order ascending.
 
@@ -561,7 +560,7 @@ def get_interview_questions(interview_id: int) -> List[Dict[str, Any]]:
 # 10a. get_interview_breakdown
 # ---------------------------------------------------------------------------
 
-def get_interview_breakdown(interview_id: int) -> List[Dict[str, Any]]:
+def get_interview_breakdown(interview_id: int) -> list[dict[str, Any]]:
     """
     Fetch all questions for an interview, alongside their answers and evaluations.
     """
@@ -584,7 +583,7 @@ def get_interview_breakdown(interview_id: int) -> List[Dict[str, Any]]:
 # 10b. get_latest_question
 # ---------------------------------------------------------------------------
 
-def get_latest_question(interview_id: int) -> Optional[Dict[str, Any]]:
+def get_latest_question(interview_id: int) -> dict[str, Any] | None:
     """
     Fetch the most recent question for an interview, ordered by question_order descending.
     """
@@ -610,7 +609,7 @@ def get_latest_question(interview_id: int) -> Optional[Dict[str, Any]]:
 # 11. get_interview_report
 # ---------------------------------------------------------------------------
 
-def get_interview_report(interview_id: int) -> Optional[Dict[str, Any]]:
+def get_interview_report(interview_id: int) -> dict[str, Any] | None:
     """
     Fetch a single interview report row by interview_id.
 
@@ -637,7 +636,7 @@ def get_interview_report(interview_id: int) -> Optional[Dict[str, Any]]:
 # 12. get_user_interviews
 # ---------------------------------------------------------------------------
 
-def get_user_interviews(user_id: int) -> List[Dict[str, Any]]:
+def get_user_interviews(user_id: int) -> list[dict[str, Any]]:
     """
     Fetch all interviews for a user, ordered by interview_id descending (newest first).
 

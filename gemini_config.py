@@ -10,12 +10,10 @@ from google.genai import types
 
 logging.getLogger("google_genai").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
-latency_file = open("latency_metrics.log", "a")
+
 def log_latency(msg, *args):
     formatted = msg % args
     logger.info(formatted)
-    latency_file.write(formatted + "\n")
-    latency_file.flush()
 
 # ---------------------------------------------------------------------------
 # Per-key client cache — avoids reconstructing genai.Client on every call.

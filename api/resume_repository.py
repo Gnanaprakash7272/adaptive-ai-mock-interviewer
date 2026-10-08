@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
+
 from api.db import supabase
 
 log = logging.getLogger(__name__)
@@ -11,7 +12,39 @@ def _safe_str(value: Any) -> str:
         return ""
     return str(value)
 
-def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
+def _parse_resume_date(d: Any) -> str | None:
+    if not d:
+        return None
+    s = str(d).strip()
+    if not s or s.lower() == "present":
+        return None
+    
+    import re
+    from datetime import datetime
+    
+    # Already YYYY-MM-DD
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    
+    # YYYY
+    if len(s) == 4 and s.isdigit():
+        return f"{s}-01-01"
+        
+    # YYYY-MM
+    if len(s) == 7 and re.match(r"^\d{4}-\d{2}$", s):
+        return f"{s}-01"
+        
+    # Try fuzzy parsing common formats like 'Nov 2026'
+    for fmt in ("%b %Y", "%B %Y", "%m/%Y", "%m-%Y", "%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+    # If we really can't parse it, drop it to prevent DB crash
+    return None
+
+def save_candidate_profile(user_id: int, profile: dict[str, Any]) -> int:
     """Saves a candidate profile (nested dict) into relational tables and returns resume_id."""
     # 1. Upsert into resumes (insert if new, update if this user already has a resume)
     candidate = profile.get("candidate", {})
@@ -126,19 +159,12 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
                 "responsibilities": "\n".join(exp.get("responsibilities", [])) if isinstance(exp.get("responsibilities"), list) else _safe_str(exp.get("responsibilities")),
                 "technologies": exp.get("technologies") if isinstance(exp.get("technologies"), list) else [],
             }
-            # Optional dates
-            if exp.get("start_date") and len(str(exp.get("start_date", ""))) >= 4:
-                sd = str(exp.get("start_date"))
-                if len(sd) == 4 and sd.isdigit(): sd += "-01-01"
-                elif len(sd) == 7 and "-" in sd: sd += "-01"
-                # If date format is weird, postgres might reject it, but we'll catch it on insert
-                exp_row["start_date"] = sd
-            if exp.get("end_date") and len(str(exp.get("end_date", ""))) >= 4:
-                ed = str(exp.get("end_date"))
-                if len(ed) == 4 and ed.isdigit(): ed += "-01-01"
-                elif len(ed) == 7 and "-" in ed: ed += "-01"
-                if ed.lower() != "present":
-                    exp_row["end_date"] = ed
+            # Parse dates safely
+            sd = _parse_resume_date(exp.get("start_date"))
+            if sd: exp_row["start_date"] = sd
+            
+            ed = _parse_resume_date(exp.get("end_date"))
+            if ed: exp_row["end_date"] = ed
             exp_rows.append(exp_row)
         try:
             if exp_rows:
@@ -186,7 +212,7 @@ def save_candidate_profile(user_id: int, profile: Dict[str, Any]) -> int:
 
     return resume_id
 
-def get_candidate_profile(user_id: int) -> Optional[Dict[str, Any]]:
+def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
     # Get most recent resume
     res = supabase.table("resumes").select("*").eq("user_id", user_id).order("resume_id", desc=True).limit(1).execute()
     if not res.data:

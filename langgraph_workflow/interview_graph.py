@@ -814,7 +814,7 @@ def should_continue(state: InterviewState) -> str:
     if adaptive.get("use_fallback_generate", True):
         return "continue"
 
-    return "process_answer"""
+    return "process_answer"
 
 
 # ===========================================================================

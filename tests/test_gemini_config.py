@@ -1,10 +1,11 @@
 """
-test_gemini_config.py  (file: test_error_handling.py)
+tests/test_gemini_config.py
 
-Proper pytest tests for gemini_config.call_gemini and call_gemini_json.
+Unit tests for gemini_config.call_gemini, call_gemini_json, and _classify_error.
 
-Replaces the old script-style tests that had no assertions.
-All network calls are mocked via patch("gemini_config.genai.Client").
+All network I/O is mocked; no real API calls are made.
+All patching uses patch("gemini_config.genai.Client") to intercept the
+cached-client factory.
 """
 import json
 import os
@@ -15,6 +16,40 @@ import pytest
 os.environ.setdefault("GEMINI_API_KEY", "MOCK_KEY_FOR_TESTS")
 
 import gemini_config  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# _classify_error — unit tests
+# ---------------------------------------------------------------------------
+
+class TestClassifyError:
+    """Verify the three-tier classification logic."""
+
+    def test_resource_exhausted_string(self):
+        assert gemini_config._classify_error(Exception("429 RESOURCE_EXHAUSTED")) == "quota"
+
+    def test_unavailable_string(self):
+        assert gemini_config._classify_error(Exception("503 UNAVAILABLE")) == "unavail"
+
+    def test_unauthenticated_string(self):
+        assert gemini_config._classify_error(Exception("401 UNAUTHENTICATED")) == "auth"
+
+    def test_permission_denied_string(self):
+        assert gemini_config._classify_error(Exception("403 PERMISSION_DENIED")) == "perm"
+
+    def test_not_found_string(self):
+        assert gemini_config._classify_error(Exception("404 NOT_FOUND")) == "notfound"
+
+    def test_numeric_429_word_boundary(self):
+        # Pure numeric fallback, at word boundary.
+        assert gemini_config._classify_error(Exception("error 429 exceeded")) == "quota"
+
+    def test_no_false_positive_on_embedded_digits(self):
+        # The string '1429' must NOT match the \b429\b pattern.
+        assert gemini_config._classify_error(Exception("request_id=14291234")) == "other"
+
+    def test_unknown_error(self):
+        assert gemini_config._classify_error(Exception("something random")) == "other"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -69,6 +104,53 @@ class TestCallGemini:
         # 1 key × 1 model × 3 attempts = 3 calls
         assert mock_inst.models.generate_content.call_count == 3
 
+    def test_503_exhausted_rotates_key_not_model(self):
+        """After exhausting 503 retries on key-1, key-2 must be tried (not next model)."""
+        os.environ["GEMINI_API_KEY_2"] = "MOCK_KEY_2"
+        gemini_config._client_cache.clear()
+
+        call_count = {"n": 0}
+
+        def side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            # Key-1 gets 3×503, then key-2 succeeds on the 4th overall call.
+            if call_count["n"] <= 3:
+                raise Exception("503 UNAVAILABLE")
+            return _fake_response('{"ok": true}')
+
+        mock_inst = _mock_client()
+        mock_inst.models.generate_content.side_effect = side_effect
+        with patch("gemini_config.genai.Client", return_value=mock_inst), \
+             patch("gemini_config.time.sleep"), \
+             patch("gemini_config.get_model_chain", return_value=["mock-model"]):
+            result = gemini_config.call_gemini("sys", "user")
+        assert result == '{"ok": true}'
+        assert call_count["n"] == 4  # 3 retries on key-1, 1 success on key-2.
+        del os.environ["GEMINI_API_KEY_2"]
+        gemini_config._client_cache.clear()
+
+    def test_none_text_rotates_key(self):
+        """A None response.text (safety block) must rotate to the next key."""
+        os.environ["GEMINI_API_KEY_2"] = "MOCK_KEY_2"
+        gemini_config._client_cache.clear()
+
+        call_count = {"n": 0}
+
+        def side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return _fake_response(None)  # Safety block.
+            return _fake_response('{"ok": true}')
+
+        mock_inst = _mock_client()
+        mock_inst.models.generate_content.side_effect = side_effect
+        with patch("gemini_config.genai.Client", return_value=mock_inst), \
+             patch("gemini_config.get_model_chain", return_value=["mock-model"]):
+            result = gemini_config.call_gemini("sys", "user")
+        assert result == '{"ok": true}'
+        del os.environ["GEMINI_API_KEY_2"]
+        gemini_config._client_cache.clear()
+
     def test_429_quota_rotates_key_then_raises(self):
         """429 RESOURCE_EXHAUSTED rotates to the next key; exhausting all → RuntimeError."""
         os.environ["GEMINI_API_KEY_2"] = "MOCK_KEY_2"
@@ -86,24 +168,61 @@ class TestCallGemini:
         del os.environ["GEMINI_API_KEY_2"]
         gemini_config._client_cache.clear()
 
-    def test_401_auth_error_raises_immediately(self):
-        """401 Unauthorized must not be retried — fail on first attempt."""
-        exc = Exception("401 Unauthorized invalid api key")
+    def test_401_single_key_raises_after_exhaustion(self):
+        """When the only key returns 401, all keys/models fail → RuntimeError."""
+        exc = Exception("401 UNAUTHENTICATED invalid api key")
         mock_inst = _mock_client(side_effect=exc)
-        with patch("gemini_config.genai.Client", return_value=mock_inst):
-            with pytest.raises(RuntimeError, match="AUTH"):
+        with patch("gemini_config.genai.Client", return_value=mock_inst), \
+             patch("gemini_config.get_model_chain", return_value=["mock-model"]):
+            with pytest.raises(RuntimeError):
                 gemini_config.call_gemini("sys", "user")
-        # Must stop after the first attempt
+        # Auth error breaks retry loop after 1 attempt per key — no 503 retries.
         assert mock_inst.models.generate_content.call_count == 1
 
-    def test_403_permission_error_raises_immediately(self):
-        """403 Forbidden must not be retried — fail on first attempt."""
-        exc = Exception("403 Forbidden permission denied")
-        mock_inst = _mock_client(side_effect=exc)
-        with patch("gemini_config.genai.Client", return_value=mock_inst):
-            with pytest.raises(RuntimeError, match="AUTH"):
-                gemini_config.call_gemini("sys", "user")
-        assert mock_inst.models.generate_content.call_count == 1
+    def test_401_rotates_to_next_key_on_auth_failure(self):
+        """Auth failure on first key must NOT raise — it should try the second key."""
+        os.environ["GEMINI_API_KEY_2"] = "MOCK_KEY_2"
+        gemini_config._client_cache.clear()
+
+        call_count = {"n": 0}
+
+        def side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise Exception("401 UNAUTHENTICATED")
+            return _fake_response('{"ok": true}')
+
+        mock_inst = _mock_client()
+        mock_inst.models.generate_content.side_effect = side_effect
+        with patch("gemini_config.genai.Client", return_value=mock_inst), \
+             patch("gemini_config.get_model_chain", return_value=["mock-model"]):
+            result = gemini_config.call_gemini("sys", "user")
+        assert result == '{"ok": true}'
+        assert call_count["n"] == 2  # First key failed, second succeeded.
+        del os.environ["GEMINI_API_KEY_2"]
+        gemini_config._client_cache.clear()
+
+    def test_403_rotates_to_next_key_on_perm_failure(self):
+        """403 PERMISSION_DENIED on first key must not abort — try next key."""
+        os.environ["GEMINI_API_KEY_2"] = "MOCK_KEY_2"
+        gemini_config._client_cache.clear()
+
+        call_count = {"n": 0}
+
+        def side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise Exception("403 PERMISSION_DENIED")
+            return _fake_response('{"ok": true}')
+
+        mock_inst = _mock_client()
+        mock_inst.models.generate_content.side_effect = side_effect
+        with patch("gemini_config.genai.Client", return_value=mock_inst), \
+             patch("gemini_config.get_model_chain", return_value=["mock-model"]):
+            result = gemini_config.call_gemini("sys", "user")
+        assert result == '{"ok": true}'
+        del os.environ["GEMINI_API_KEY_2"]
+        gemini_config._client_cache.clear()
 
     def test_404_not_found_advances_model(self):
         """404 NOT_FOUND means this model doesn't exist → advance to next model."""

@@ -24,9 +24,25 @@ const API_BASE_URL_KEY = 'ai_mockora_api_url';
 export const AUTH_INVALIDATED_EVENT = 'ai_mockora_auth_invalidated';
 
 export const getApiBaseUrl = (): string => {
+  // Production (Vercel): frontend and backend share the same origin.
+  // Use relative URLs so no CORS or URL config is needed.
   if (import.meta.env.PROD) return '';
 
-  return localStorage.getItem(API_BASE_URL_KEY) || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  // Development: allow a localStorage override (useful for switching between
+  // local and remote backend without rebuilding).
+  const stored = localStorage.getItem(API_BASE_URL_KEY);
+  if (stored) return stored;
+
+  // Require VITE_API_BASE_URL to be explicitly set in .env.local.
+  // Fail loudly rather than silently hitting localhost, which breaks CI/staging.
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (!envUrl) {
+    throw new Error(
+      '[Mockora] VITE_API_BASE_URL is not set.\n' +
+      'Copy frontend/.env.example to frontend/.env.local and fill in the backend URL.'
+    );
+  }
+  return envUrl;
 };
 
 export const getAccessToken = (): string | null => {

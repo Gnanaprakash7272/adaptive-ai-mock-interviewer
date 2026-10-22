@@ -14,6 +14,16 @@ _VALID_ADAPTIVE_ACTIONS: frozenset[str] = frozenset(
     {"follow_up", "easier", "harder", "new_topic", "same_topic", ""}
 )
 
+# JSON schema shape for a generated question — used externally by answer_processor.py
+# to embed in the combined evaluation+question prompt schema.
+QUESTION_SCHEMA: dict = {
+    "question": "",
+    "topic": "",
+    "difficulty": "",
+    "question_type": "",
+    "expected_concepts": [],
+}
+
 SYSTEM_PROMPT = """
 You are an AI technical interviewer.
 

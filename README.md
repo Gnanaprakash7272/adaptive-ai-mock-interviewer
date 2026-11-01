@@ -285,8 +285,9 @@ SMTP_PASSWORD="your-app-password"
 
 **1. Start the Backend API:**
 ```bash
+cd backend
 uv sync
-uv run uvicorn backend.api.main:app --reload
+uv run uvicorn api.main:app --reload
 ```
 *API runs on `http://localhost:8000`. Swagger docs at `/docs`.*
 
@@ -306,6 +307,7 @@ MOCKORA includes a comprehensive, decoupled test suite.
 
 **Run the suite:**
 ```bash
+cd backend
 uv run pytest -q -m "not e2e"
 ```
 The `e2e` tests need a running API server and real credentials, so they are skipped by default (and in CI).

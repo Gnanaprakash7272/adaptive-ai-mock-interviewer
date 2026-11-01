@@ -54,6 +54,15 @@ import os
 import re
 import threading
 import urllib.parse
+import sys
+from pathlib import Path
+
+_backend_dir = str(Path(__file__).resolve().parent.parent)
+_intel_dir = str(Path(__file__).resolve().parent.parent / "intelligence")
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+if _intel_dir not in sys.path:
+    sys.path.insert(0, _intel_dir)
 
 from dotenv import load_dotenv
 

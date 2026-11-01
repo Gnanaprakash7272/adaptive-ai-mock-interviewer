@@ -3,10 +3,13 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure backend directory is in sys.path so sibling packages are discoverable
+# Ensure backend and intelligence directories are in sys.path so sibling packages are discoverable
 _backend_dir = str(Path(__file__).resolve().parent.parent)
+_intelligence_dir = str(Path(__file__).resolve().parent.parent / "intelligence")
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
+if _intelligence_dir not in sys.path:
+    sys.path.insert(0, _intelligence_dir)
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError

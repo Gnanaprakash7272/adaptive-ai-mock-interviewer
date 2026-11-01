@@ -12,12 +12,12 @@ from unittest.mock import MagicMock, patch
 # Project root on sys.path — must happen before ANY local package import.
 # _root is the directory containing api/, tests/, etc.
 # ---------------------------------------------------------------------------
-_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_backend = os.path.join(_root, "backend")
-if _backend not in sys.path:
-    sys.path.insert(0, _backend)
-if _root not in sys.path:
-    sys.path.insert(0, _root)
+_backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_root = os.path.dirname(_backend)
+_intelligence = os.path.join(_backend, "intelligence")
+for _p in (_intelligence, _backend, _root):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # ---------------------------------------------------------------------------
 # Load environment variables.
@@ -26,7 +26,9 @@ if _root not in sys.path:
 # ---------------------------------------------------------------------------
 from dotenv import load_dotenv
 
-_env_file = Path(_root) / ".env"
+_env_file = Path(_backend) / ".env"
+if not _env_file.is_file():
+    _env_file = Path(_root) / ".env"
 if _env_file.is_file():
     load_dotenv(dotenv_path=_env_file, override=False)
 

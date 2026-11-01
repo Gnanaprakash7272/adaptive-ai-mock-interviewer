@@ -286,7 +286,7 @@ SMTP_PASSWORD="your-app-password"
 **1. Start the Backend API:**
 ```bash
 uv sync
-uv run uvicorn api.main:app --reload
+uv run uvicorn backend.api.main:app --reload
 ```
 *API runs on `http://localhost:8000`. Swagger docs at `/docs`.*
 

@@ -11,7 +11,7 @@
       ]
     },
     "backend": {
-      "root": ".",
+      "root": "backend",
       "framework": "fastapi",
       "entrypoint": "api.main:app"
     }

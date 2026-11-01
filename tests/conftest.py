@@ -13,6 +13,9 @@ from unittest.mock import MagicMock, patch
 # _root is the directory containing api/, tests/, etc.
 # ---------------------------------------------------------------------------
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_backend = os.path.join(_root, "backend")
+if _backend not in sys.path:
+    sys.path.insert(0, _backend)
 if _root not in sys.path:
     sys.path.insert(0, _root)
 

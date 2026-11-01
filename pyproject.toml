@@ -59,7 +59,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
-    "api", "gemini_config", "ai_schemas",
+    "backend", "api", "gemini_config", "ai_schemas",
     "resume_intelligence", "answer_intelligence",
     "question_intelligence", "adaptive_intelligence",
     "report_intelligence", "langgraph_workflow",

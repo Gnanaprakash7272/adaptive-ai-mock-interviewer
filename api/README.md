@@ -49,3 +49,14 @@ Run the test suite using `pytest`:
 uv run pytest api/
 ```
 Tests are completely isolated and do not make live DB or Gemini calls (except `test_e2e_flow.py` in the root).
+
+Run the authentication security regression script:
+```bash
+uv run pytest --import-mode=prepend tests/api/test_auth_security.py -q
+```
+
+The script includes expected-failure checks for reset-token replay, fail-open
+JWT revocation checks, deleted-user tokens, and database error disclosure.
+When the corresponding production fixes are implemented, those cases should
+change from `xfailed` to `passed` (or `xpassed` before the `xfail` marker is
+removed).

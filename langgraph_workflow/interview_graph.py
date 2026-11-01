@@ -93,7 +93,9 @@ from langgraph_workflow.interview_state import InterviewState
 # ---------------------------------------------------------------------------
 # Import existing pure AI functions â€” zero logic duplication.
 # ---------------------------------------------------------------------------
+from question_intelligence.interviewer_style import validate_question_style
 from question_intelligence.question_generator import generate_question as _generate_question
+from question_intelligence.question_generator import is_genuine_follow_up as _is_genuine_follow_up
 from report_intelligence.report_generator import generate_narrative as _generate_narrative
 
 logger = logging.getLogger(__name__)
@@ -611,14 +613,33 @@ def process_answer(state: InterviewState) -> dict:
         decided_topic = str(next_topic).strip().lower()
 
         # Ensure Gemini didn't try to switch topic when it shouldn't, or vice-versa
+        proposal_issues: list[str] = []
         if proposed_topic == decided_topic:
+            proposal_issues = validate_question_style(str(question_proposal.get("question") or ""))
+            # A follow-up must be anchored in what the candidate actually said.
+            # The proposal was written before the engine decided, so verify it.
+            if not proposal_issues and next_action == "follow_up" and not _is_genuine_follow_up(
+                str(question_proposal.get("question") or ""),
+                question_text,
+                str(candidate_answer),
+                evaluation.get("missing_concepts") or [],
+                current_topic,
+            ):
+                proposal_issues = ["follow-up is not grounded in the candidate's answer"]
+            if proposal_issues:
+                log_latency(
+                    "[LATENCY] process_answer rejected proposal on quality: %s",
+                    "; ".join(proposal_issues),
+                )
+
+        if proposed_topic == decided_topic and not proposal_issues:
             use_fallback = False
             new_question = dict(question_proposal)
             # Force difficulty to match deterministic engine
             new_question["difficulty"] = next_difficulty
             question_count += 1
             log_latency("[LATENCY] process_answer accepted proposed question topic=%s", proposed_topic)
-        else:
+        elif proposed_topic != decided_topic:
             log_latency("[LATENCY] process_answer rejected proposal: expected topic %s, got %s", decided_topic, proposed_topic)
 
     decision["use_fallback_generate"] = use_fallback
@@ -934,4 +955,3 @@ class _LazyGraphProxy:
 
 
 interview_graph = _LazyGraphProxy()
-

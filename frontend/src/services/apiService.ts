@@ -83,8 +83,18 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
     let errorDetail = response.statusText;
     try {
       const errorData = await response.json();
-      if (errorData.detail) {
-        errorDetail = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+      if (errorData.error?.message) {
+        errorDetail = errorData.error.message;
+      } else if (errorData.detail) {
+        if (typeof errorData.detail === 'string') {
+          errorDetail = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          errorDetail = errorData.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ');
+        } else {
+          errorDetail = JSON.stringify(errorData.detail);
+        }
+      } else if (errorData.message) {
+        errorDetail = errorData.message;
       }
     } catch {
       // Ignored

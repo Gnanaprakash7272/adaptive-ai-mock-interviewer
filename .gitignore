@@ -36,3 +36,6 @@ scratch/
 # Local AI coding-agent configuration
 .agents/
 skills-lock.json
+
+# Supabase CLI local link state (contains project ref / org id)
+supabase/.temp/

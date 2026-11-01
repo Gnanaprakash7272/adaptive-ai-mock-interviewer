@@ -1,6 +1,5 @@
 # AI MOCKORA
 **Your Adaptive, AI-Powered Mock Interviewer**
-<<<<<<< HEAD
 
 ---
 
@@ -63,6 +62,9 @@ Follow-up / New Topic / Difficulty Change
 
 ## Screenshots
 
+_Screenshots coming soon. To add them, save images to `docs/images/` (`landing.png`, `profile.png`, `role-selection.png`, `interview.png`, `report.png`) and uncomment the block below._
+
+<!--
 ### Landing Page
 ![MOCKORA Landing Page](docs/images/landing.png)
 
@@ -77,71 +79,9 @@ Follow-up / New Topic / Difficulty Change
 
 ### Final Report
 ![Interview Report](docs/images/report.png)
+-->
 
 ---
-=======
-
----
-
-## Demo
-- **Live Demo:** https://mockora-ai.vercel.app
-
----
-
-## Project Overview
-**AI MOCKORA** is a sophisticated, AI-driven platform that simulates highly realistic technical interviews. Unlike static question banks, MOCKORA reads your resume, understands your target role, and conducts an adaptive, multi-turn interview. It evaluates each answer immediately, adjusts the difficulty of follow-up questions, and provides a deep, actionable feedback report to help you land your dream job.
-
----
-
-## Problem Statement
-Preparing for technical interviews is broken:
-- Human mock interviews are **expensive** and **hard to schedule**.
-- Generic coding platforms lack **verbal/system-design** context.
-- Most AI tools ask **static, canned questions** that don't reflect a candidate's actual resume or dynamically adapt to their real-time performance.
-
-**MOCKORA solves this** by acting as an expert, dynamic technical interviewer available 24/7.
-
----
-
-## Key Features
-- **Deep Resume Parsing**: Extracts structured skills and experiences directly from uploaded PDFs.
-- **Adaptive Difficulty**: AI adjusts the interview's difficulty and topic based on the technical depth of your previous answers.
-- **Immediate Evaluation**: Every answer is scored for correctness, completeness, and missing concepts.
-- **Comprehensive Final Reports**: Generates actionable insights, highlighting your demonstrated strengths and knowledge gaps.
-- **Resilient AI Orchestration**: Multi-turn conversational memory powered by LangGraph ensures state is never lost.
-
----
-
-## Why MOCKORA?
-
-Traditional mock interviews are often static:
-
-`Candidate → Question → Answer → Score`
-
-MOCKORA introduces an adaptive loop:
-
-```text
-Candidate Profile
-        ↓
-Role Intelligence
-        ↓
-    Question
-        ↓
-     Answer
-        ↓
-   Evaluation
-        ↓
-Adaptive Decision
-        ↓
-Follow-up / New Topic / Difficulty Change
-        ↓
-   Final Report
-```
-
----
-
-
->>>>>>> feature/ai-backend
 
 ## System Architecture
 
@@ -232,31 +172,21 @@ LangGraph coordinates these components as a stateful interview workflow.
 ## Project Structure
 ```text
 adaptive-ai-mock-interviewer/
-<<<<<<< HEAD
-├── adaptive_intellegence/ # Core adaptive logic and difficulty tuning
-├── answer_intellegence/   # Answer evaluation and feedback generation
-├── api/                   # FastAPI backend, routers, auth, repositories
-├── docs/                  # Database schema migrations, diagrams, images
-├── langgraph_workflow/    # Orchestration, state definitions, graph nodes
-├── question_intellegence/ # Generates dynamic follow-ups and new questions
-├── report_intellegence/   # Final evaluation report generation logic
-├── resume_intellegence/   # PDF parsing and candidate profile extraction
-=======
 ├── adaptive_intelligence/ # Core adaptive logic and difficulty tuning
 ├── answer_intelligence/   # Answer evaluation and feedback generation
 ├── api/                   # FastAPI backend, routers, auth, repositories
 ├── supabase/migrations/   # Database schema migrations
+├── tests/                 # Pytest suite (unit, API, graph)
 ├── langgraph_workflow/    # Orchestration, state definitions, graph nodes
 ├── question_intelligence/ # Generates dynamic follow-ups and new questions
 ├── report_intelligence/   # Final evaluation report generation logic
 ├── resume_intelligence/   # PDF parsing and candidate profile extraction
->>>>>>> feature/ai-backend
-├── scratch_frontend/      # React + Vite frontend application
+├── frontend/              # React + Vite frontend application
 ├── ai_schemas.py          # Pydantic schemas for LLM structured outputs
 ├── gemini_config.py       # Centralized Gemini model configuration
 ├── pyproject.toml         # Python project metadata
 ├── pytest.ini             # Pytest configuration
-├── requirements.txt       # Dependencies
+├── requirements.txt       # Pinned-range dependencies (mirrors pyproject.toml)
 ├── uv.lock                # Locked dependencies for uv
 └── README.md              # Project documentation
 ```
@@ -362,7 +292,7 @@ uv run uvicorn api.main:app --reload
 
 **2. Start the Frontend Application:**
 ```bash
-cd scratch_frontend
+cd frontend
 npm install
 # Ensure you copy .env.example to .env.local and set VITE_API_BASE_URL=http://localhost:8000
 npm run dev
@@ -374,15 +304,15 @@ npm run dev
 ## Testing
 MOCKORA includes a comprehensive, decoupled test suite.
 
-**Primary Documented Command:**
+**Run the suite:**
 ```bash
-uv run pytest -q
+uv run pytest -q -m "not e2e"
 ```
+The `e2e` tests need a running API server and real credentials, so they are skipped by default (and in CI).
 
 **Latest Validation:**
-- Python 3.13.13
-- 224 tests passed
-- 3 tests skipped
+- 233 tests passed, 3 skipped (e2e deselected)
+- CI runs the same command on every push and pull request (see `.github/workflows/ci.yml`)
 
 ---
 

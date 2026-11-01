@@ -45,6 +45,8 @@ def make_supabase_mock(select_data=None, insert_data=None, update_data=None):
     # update chaining
     update_builder = MagicMock()
     update_builder.eq.return_value = update_builder
+    update_builder.is_.return_value = update_builder
+    update_builder.select.return_value = update_builder
     update_builder.execute.return_value = MagicMock(data=update_data or [])
     query_builder.update.return_value = update_builder
 
@@ -355,7 +357,9 @@ def test_11_verify_otp_success():
 
         update_builder = MagicMock()
         update_builder.eq.return_value = update_builder
-        update_builder.execute.return_value = MagicMock()
+        update_builder.is_.return_value = update_builder
+        update_builder.select.return_value = update_builder
+        update_builder.execute.return_value = MagicMock(data=[{"id": 1}])
         mock.update.return_value = update_builder
         return mock
 
@@ -370,19 +374,25 @@ def test_11_verify_otp_success():
     print("PASS  test_11_verify_otp_success")
 
 def test_12_reset_password_success():
-    token_payload = {"sub": "1", "purpose": "password_reset"}
+    token_payload = {"sub": "1", "purpose": "password_reset", "reset_otp_id": 1}
     token = jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
     def side_effect(table_name):
         mock = MagicMock()
         select_builder = MagicMock()
         select_builder.eq.return_value = select_builder
-        select_builder.execute.return_value = MagicMock(data=[{"user_id": 1}])
+        select_builder.is_.return_value = select_builder
+        select_builder.execute.side_effect = [
+            MagicMock(data=[{"user_id": 1, "token_version": 0}]),
+            MagicMock(data=[{"id": 1}]),
+        ]
         mock.select.return_value = select_builder
 
         update_builder = MagicMock()
         update_builder.eq.return_value = update_builder
-        update_builder.execute.return_value = MagicMock()
+        update_builder.is_.return_value = update_builder
+        update_builder.select.return_value = update_builder
+        update_builder.execute.return_value = MagicMock(data=[{"id": 1}])
         mock.update.return_value = update_builder
         return mock
 

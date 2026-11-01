@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -8,7 +8,6 @@ import { Button } from '../components/common/Button';
 
 import {
   Search,
-  Filter,
   Sparkles,
   Layout,
   Cpu,
@@ -22,8 +21,6 @@ import {
   Award,
   BriefcaseBusiness,
   Target,
-  X,
-  SlidersHorizontal,
   ChevronRight,
   Cloud,
   Code,
@@ -134,17 +131,6 @@ export const RoleSelectionPage: React.FC = () => {
     };
   }, [searchQuery, selectedDifficulty]);
 
-  /* ============================================================
-     FILTERS
-  ============================================================ */
-
-  const difficultyFilters = [
-    'All',
-    'Senior',
-    'Staff/Architect',
-    'Mid-Level',
-    'Junior',
-  ];
 
   /* ============================================================
      ICON MAPPING
@@ -180,25 +166,6 @@ export const RoleSelectionPage: React.FC = () => {
     setSelectedDifficulty('All');
   };
 
-  /* ============================================================
-     ROLE STATISTICS
-  ============================================================ */
-
-  const roleStats = useMemo(() => {
-    const departments = new Set(
-      roles.map((role) => role.department).filter(Boolean)
-    );
-
-    const skills = new Set(
-      roles.flatMap((role) => role.requiredSkills || [])
-    );
-
-    return {
-      roles: roles.length,
-      departments: departments.size,
-      skills: skills.size,
-    };
-  }, [roles]);
 
   const hasActiveFilters =
     searchQuery.trim().length > 0 || selectedDifficulty !== 'All';
@@ -209,111 +176,6 @@ export const RoleSelectionPage: React.FC = () => {
 
   return (
     <PageWrapper className="mx-auto max-w-7xl space-y-8">
-
-      {/* ============================================================
-          SEARCH + FILTERS
-      ============================================================ */}
-
-      <Card className="p-4 sm:p-5">
-
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-
-          {/* Search */}
-
-          <div className="relative flex-1">
-
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-            <input
-              type="text"
-              placeholder="Search engineering roles, skills, or domains..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-10 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-            />
-
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-
-          </div>
-
-          {/* Filter */}
-
-          <div className="flex items-center gap-2 overflow-x-auto">
-
-            <div className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-400">
-              <SlidersHorizontal className="h-4 w-4" />
-              Level
-            </div>
-
-            {difficultyFilters.map((difficulty) => {
-              const active = selectedDifficulty === difficulty;
-
-              return (
-                <button
-                  key={difficulty}
-                  type="button"
-                  onClick={() => setSelectedDifficulty(difficulty)}
-                  className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold transition-all ${active
-                      ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/20'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                    }`}
-                >
-                  {difficulty}
-                </button>
-              );
-            })}
-
-          </div>
-
-        </div>
-
-        {/* Active filter state */}
-
-        {hasActiveFilters && (
-          <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
-
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-
-              <Filter className="h-3.5 w-3.5" />
-
-              <span>
-                Showing results for{' '}
-                <strong className="text-slate-800 dark:text-slate-200">
-                  {searchQuery || 'all roles'}
-                </strong>
-                {selectedDifficulty !== 'All' && (
-                  <>
-                    {' '}
-                    ·{' '}
-                    <strong className="text-slate-800 dark:text-slate-200">
-                      {selectedDifficulty}
-                    </strong>
-                  </>
-                )}
-              </span>
-
-            </div>
-
-            <button
-              type="button"
-              onClick={clearSearch}
-              className="text-xs font-bold text-brand-600 hover:underline dark:text-brand-400"
-            >
-              Clear filters
-            </button>
-
-          </div>
-        )}
-
-      </Card>
 
       {/* ============================================================
           HERO
@@ -330,14 +192,9 @@ export const RoleSelectionPage: React.FC = () => {
 
         <div className="pointer-events-none absolute -bottom-32 -left-24 h-72 w-72 rounded-full bg-red-500/5 blur-3xl" />
 
-        <div className="relative z-10 grid gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:p-10">
+        <div className="relative z-10 p-6 sm:p-8 lg:p-10">
 
           <div className="max-w-3xl">
-
-            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700 dark:border-brand-900/40 dark:bg-brand-950/30 dark:text-brand-400">
-              <Target className="h-3 w-3" />
-              Skill-based Role Matching
-            </div>
 
             <h1 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl lg:text-4xl">
               Choose Your{' '}
@@ -370,42 +227,6 @@ export const RoleSelectionPage: React.FC = () => {
               </div>
 
             </div>
-          </div>
-
-          {/* Role Stats */}
-
-          <div className="grid grid-cols-3 gap-2 self-center lg:w-[280px]">
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-950">
-              <p className="text-xl font-black text-slate-900 dark:text-white">
-                {loading ? '—' : roleStats.roles}
-              </p>
-
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                Roles
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-950">
-              <p className="text-xl font-black text-slate-900 dark:text-white">
-                {loading ? '—' : roleStats.departments}
-              </p>
-
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                Domains
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-950">
-              <p className="text-xl font-black text-slate-900 dark:text-white">
-                {loading ? '—' : roleStats.skills}
-              </p>
-
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                Skills
-              </p>
-            </div>
-
           </div>
 
         </div>

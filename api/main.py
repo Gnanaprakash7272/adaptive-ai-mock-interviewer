@@ -42,7 +42,22 @@ app = FastAPI(title="AI MOCKORA API")
 
 # Register SlowAPI rate limiter
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Return JSON for rate-limit errors so frontend clients can parse them cleanly."""
+    return JSONResponse(
+        status_code=429,
+        content={
+            "success": False,
+            "error": {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": f"Too many requests. Please wait a minute and try again ({exc.detail}).",
+            },
+            "detail": f"Rate limit exceeded: {exc.detail}",
+        },
+    )
 
 
 # =============================================================================
@@ -130,7 +145,7 @@ async def unhandled_exception_handler(request, exc: Exception):
 # ---------------------------------------------------------------------------
 _raw_origins = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173"
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000"
 )
 _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 

@@ -25,9 +25,18 @@ export const SignupPage: React.FC = () => {
     setLoading(true);
     try {
       await apiService.signup({ name, email, password });
-      await login(email, password);
-      addToast('success', 'Account Created!', 'Welcome to AI MOCKORA.');
-      navigate('/dashboard');
+      try {
+        await login(email, password);
+        addToast('success', 'Account Created!', 'Welcome to AI MOCKORA.');
+        navigate('/dashboard');
+      } catch {
+        addToast(
+          'error',
+          'Account May Already Exist',
+          'Could not sign in with these credentials. If you already registered this email, please log in or reset your password.'
+        );
+        navigate('/login');
+      }
     } catch (err: any) {
       addToast('error', 'Signup Failed', err.message || 'Could not create account');
     } finally {
@@ -100,10 +109,12 @@ export const SignupPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 required
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl bg-slate-50 dark:bg-surface-dark-elevated border border-slate-200 dark:border-white/10 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
               />
+              <span className="text-[10px] text-slate-400 mt-1 block">Minimum 8 characters</span>
               <button
                 type="button"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -17,6 +18,8 @@ from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 
 from api.db import supabase
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Client-IP resolution for rate limiting
@@ -62,6 +65,10 @@ def get_client_ip(request: Request) -> str:
 limiter = Limiter(key_func=lambda request: get_client_ip(request))
 
 
+# Rate limit configurations (configurable via env for dev/staging flexibility)
+SIGNUP_RATE_LIMIT = os.getenv("AUTH_SIGNUP_RATE_LIMIT", "30/minute")
+LOGIN_RATE_LIMIT = os.getenv("AUTH_LOGIN_RATE_LIMIT", "60/minute")
+
 # Router configuration
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -95,7 +102,6 @@ security = HTTPBearer(auto_error=False)
 # ---------------------------------------------------------------------------
 try:
     from argon2 import PasswordHasher as _Argon2Hasher
-    from argon2.exceptions import VerifyMismatchError as _VerifyMismatch
     _argon2 = _Argon2Hasher(
         time_cost=3,
         memory_cost=65536,  # 64 MiB
@@ -198,13 +204,13 @@ def decode_access_token(token: str) -> dict[str, Any]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication token has expired",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
 
 
 # ============================================================================
@@ -279,7 +285,7 @@ class LoginResponse(BaseModel):
 # ============================================================================
 
 @router.post("/signup", status_code=status.HTTP_200_OK)
-@limiter.limit("5/minute")
+@limiter.limit(SIGNUP_RATE_LIMIT)
 def signup(request: Request, body: SignupRequest):
     """
     Register a new user account.
@@ -327,15 +333,16 @@ def signup(request: Request, body: SignupRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("User registration failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error during registration: {str(e)}",
-        )
+            detail="Could not create user account.",
+        ) from None
 
 
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit("10/minute")
+@limiter.limit(LOGIN_RATE_LIMIT)
 def login(request: Request, body: LoginRequest):
     """
     Authenticate user and issue JWT.
@@ -397,11 +404,12 @@ def login(request: Request, body: LoginRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("User authentication failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error during authentication: {str(e)}",
-        )
+            detail="Authentication service temporarily unavailable.",
+        ) from None
 
 
 # ============================================================================
@@ -445,20 +453,27 @@ def get_current_user(
             .eq("user_id", user_id)
             .execute()
         )
-        if result.data:
-            db_version = result.data[0].get("token_version", 0) or 0
-            if token_version_in_jwt < db_version:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token has been invalidated. Please log in again.",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is no longer available.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        db_version = result.data[0].get("token_version", 0) or 0
+        if token_version_in_jwt < db_version:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been invalidated. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     except HTTPException:
         raise
     except Exception:
-        # If we cannot check (e.g. DB down), allow the token through — do not
-        # lock out users due to a transient DB issue.
-        pass
+        logger.exception("Unable to validate token revocation state")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable.",
+        ) from None
 
     return UserInfo(user_id=user_id, email=email, username=username, name=name)
 
@@ -507,18 +522,11 @@ def hash_otp(otp: str) -> str:
 def send_otp_email(email: str, otp: str):
     """
     Sends the OTP via email using SMTP.
-    If no SMTP credentials are provided in .env, falls back to printing to the console.
+    Returns False when email delivery is unavailable. OTPs are never logged.
     """
     if not SMTP_USERNAME or not SMTP_PASSWORD:
-        print(f"--- MOCK EMAIL TO: {email} ---")
-        print(
-            f"AI MOCKORA\n\nYour password reset verification code is:\n\n{otp}\n\n"
-            "This code expires in 10 minutes.\n\n"
-            "If you did not request a password reset, you can safely ignore this email."
-        )
-        print("--------------------------------")
-        print("WARNING: Email not sent! Configure SMTP_USERNAME and SMTP_PASSWORD in .env")
-        return
+        logger.error("Password-reset email is not configured")
+        return False
 
     msg = MIMEMultipart()
     msg["From"] = f"AI MOCKORA <{FROM_EMAIL}>"
@@ -538,12 +546,11 @@ def send_otp_email(email: str, otp: str):
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"OTP Email successfully sent to {email}")
-    except Exception as e:
-        print(f"Failed to send email to {email}: {e}")
-        print(f"--- FALLBACK MOCK EMAIL TO: {email} ---")
-        print(body)
-        print("--------------------------------")
+        logger.info("Password-reset email sent")
+        return True
+    except Exception:
+        logger.exception("Password-reset email delivery failed")
+        return False
 
 
 @router.post("/forgot-password")
@@ -575,8 +582,8 @@ def forgot_password(request: Request, body: ForgotPasswordRequest):
 
             send_otp_email(email, otp)
 
-    except Exception as e:
-        print(f"Error in forgot_password: {e}")
+    except Exception:
+        logger.exception("Password-reset request failed")
         # Continue to return generic response
 
     return {"message": "If an account exists, a verification code has been sent."}
@@ -601,7 +608,7 @@ def verify_reset_otp(request: Request, body: VerifyOTPRequest):
     try:
         user_result = supabase.table("users").select("user_id").eq("email", email).execute()
         if not user_result.data:
-            raise invalid_otp_exception
+            raise invalid_otp_exception from None
 
         user_id = user_result.data[0]["user_id"]
 
@@ -632,18 +639,23 @@ def verify_reset_otp(request: Request, body: VerifyOTPRequest):
             raise invalid_otp_exception
 
         if hash_otp(otp) != otp_record["otp_hash"]:
-            supabase.table("password_reset_otps").update(
+            attempt_update = supabase.table("password_reset_otps").update(
                 {"attempts": otp_record["attempts"] + 1}
-            ).eq("id", otp_record["id"]).execute()
+            ).eq("id", otp_record["id"]).eq("verified_at", "null").select("id").execute()
+            if not attempt_update.data:
+                raise invalid_otp_exception
             raise invalid_otp_exception
 
-        supabase.table("password_reset_otps").update(
+        verification_update = supabase.table("password_reset_otps").update(
             {"verified_at": datetime.now(UTC).isoformat()}
-        ).eq("id", otp_record["id"]).execute()
+        ).eq("id", otp_record["id"]).is_("verified_at", "null").select("id").execute()
+        if not verification_update.data:
+            raise invalid_otp_exception
 
         token_payload = {
             "sub": str(user_id),
             "purpose": "password_reset",
+            "reset_otp_id": otp_record["id"],
         }
         reset_token = create_access_token(
             token_payload, expires_delta=timedelta(minutes=15)
@@ -653,9 +665,9 @@ def verify_reset_otp(request: Request, body: VerifyOTPRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"Error in verify_otp: {e}")
-        raise invalid_otp_exception
+    except Exception:
+        logger.exception("Password-reset OTP verification failed")
+        raise invalid_otp_exception from None
 
 @router.post("/reset-password")
 def reset_password(request: ResetPasswordRequest):
@@ -673,11 +685,24 @@ def reset_password(request: ResetPasswordRequest):
             raise ValueError()
 
         token_user_id = int(payload.get("sub"))
+        reset_otp_id = int(payload["reset_otp_id"])
 
         user_result = (
             supabase.table("users").select("user_id, token_version").eq("email", email).execute()
         )
         if not user_result.data or user_result.data[0]["user_id"] != token_user_id:
+            raise ValueError()
+
+        reset_result = (
+            supabase.table("password_reset_otps")
+            .select("id")
+            .eq("id", reset_otp_id)
+            .eq("user_id", token_user_id)
+            .not_.is_("verified_at", "null")
+            .is_("consumed_at", "null")
+            .execute()
+        )
+        if not reset_result.data:
             raise ValueError()
 
         current_version = user_result.data[0].get("token_version", 0) or 0
@@ -686,10 +711,23 @@ def reset_password(request: ResetPasswordRequest):
         # Atomically update password AND increment token_version.
         # Any JWT issued with the old token_version will be rejected by
         # get_current_user from this point onwards.
-        supabase.table("users").update({
+        update_result = supabase.table("users").update({
             "password_hash": hashed_password,
             "token_version": current_version + 1,
-        }).eq("user_id", token_user_id).execute()
+        }).eq("user_id", token_user_id).select("user_id").execute()
+        if not update_result.data:
+            raise HTTPException(status_code=500, detail="Could not reset password") from None
+
+        consumed_result = (
+            supabase.table("password_reset_otps")
+            .update({"consumed_at": datetime.now(UTC).isoformat()})
+            .eq("id", reset_otp_id)
+            .is_("consumed_at", "null")
+            .select("id")
+            .execute()
+        )
+        if not consumed_result.data:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
         return {"message": "Password reset successfully"}
 
@@ -697,7 +735,9 @@ def reset_password(request: ResetPasswordRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
-        )
-    except Exception as e:
-        print(f"Error in reset_password: {e}")
-        raise HTTPException(status_code=500, detail="Could not reset password")
+        ) from None
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Password reset failed")
+        raise HTTPException(status_code=500, detail="Could not reset password") from None

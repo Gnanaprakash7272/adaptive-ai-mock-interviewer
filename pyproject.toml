@@ -39,7 +39,7 @@ dev = [
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-exclude = [".venv", "scratch_frontend", "node_modules"]
+exclude = [".venv", "frontend", "node_modules"]
 
 [tool.ruff.lint]
 select = [
@@ -72,4 +72,4 @@ known-first-party = [
 python_version = "3.13"
 strict = false
 ignore_missing_imports = true
-exclude = [".venv", "scratch_frontend", "node_modules"]
+exclude = [".venv", "frontend", "node_modules"]

@@ -1,2 +1,19 @@
 # This project uses pyproject.toml and uv for dependency management.
 # Please run `uv sync` or `pip install -e .` instead.
+# Generated from pyproject.toml. Prefer `uv sync`; use this for plain pip / Vercel.
+# Regenerate with: uv export --no-hashes --no-dev -o requirements.txt
+
+pymupdf>=1.28.2
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+fastapi>=0.141.1
+uvicorn>=0.53.0
+python-multipart>=0.0.32
+supabase>=2.31.0
+langgraph>=0.2.0
+pyjwt>=2.8.0
+requests>=2.34.2
+langgraph-checkpoint-postgres>=3.1.2
+psycopg[binary]>=3.2.0
+argon2-cffi>=23.1.0
+slowapi>=0.1.9

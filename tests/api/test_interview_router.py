@@ -34,7 +34,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 # Make imports work from the project root.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from api.auth import create_access_token
 

@@ -143,11 +143,6 @@ export const DashboardPage: React.FC = () => {
 
           <div className="max-w-3xl">
 
-            {/* Status */}
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              AI MOCKORA Dashboard
-            </div>
 
             <h1 className="text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl lg:text-5xl">
               Welcome back,{' '}
@@ -549,8 +544,8 @@ export const DashboardPage: React.FC = () => {
 
               </div>
 
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
 
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
                 <div className="flex items-start gap-3">
 
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />

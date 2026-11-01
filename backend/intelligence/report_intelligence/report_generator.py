@@ -45,6 +45,20 @@ Rules:
 4. List explicit strengths, weaknesses, and recommendations based on interview answers.
 """
 
+BEHAVIORAL_REPORT_PROMPT = f"""
+You are an expert HR interviewer, hiring manager, and talent coach.
+Your task is to review the complete transcript of an AI-led Behavioral & Leadership (HR) interview and generate a final evaluation report.
+
+Return a JSON object that perfectly matches the following schema:
+{json.dumps(REPORT_SCHEMA, indent=2)}
+
+Rules:
+1. Evaluate communication clarity, STAR storytelling structure, leadership maturity, ownership, and conflict-handling ability.
+2. Distinguish resume claims from demonstrated behavioral performance during the interview.
+3. Keep feedback constructive, actionable, and encouraging.
+4. List explicit behavioral strengths, areas for growth, and coaching recommendations.
+"""
+
 
 # Sentinel returned when narrative generation fails so callers can detect it.
 NARRATIVE_FAILED_SENTINEL: dict = {
@@ -65,6 +79,7 @@ def generate_narrative(
     profile_strengths: list = None,
     interview_demonstrated_strengths: list = None,
     interview_knowledge_gaps: list = None,
+    round_type: str = "technical",
 ) -> dict:
     """
     Generate the AI narrative portion of the final report.
@@ -119,13 +134,14 @@ def generate_narrative(
             )
         )
 
-    payload = call_gemini_json(SYSTEM_PROMPT, user_prompt, max_output_tokens=3000, operation="generate_narrative")
+    sys_prompt = BEHAVIORAL_REPORT_PROMPT if round_type == "behavioral" else SYSTEM_PROMPT
+    payload = call_gemini_json(sys_prompt, user_prompt, max_output_tokens=3000, operation="generate_narrative")
     try:
         return parse_model(NarrativeOutput, payload)
     except ValidationError:
         logger.warning("Narrative parse failed on first attempt; retrying with correction prompt")
         payload = call_gemini_json(
-            SYSTEM_PROMPT,
+            sys_prompt,
             user_prompt + "\nRETRY: Return valid JSON matching the schema.",
             max_output_tokens=3000,
             operation="generate_narrative",

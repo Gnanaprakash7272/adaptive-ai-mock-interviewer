@@ -16,7 +16,7 @@ class QuestionOutput(BaseModel):
     question: str = Field(min_length=1)
     topic: str = Field(min_length=1)
     difficulty: Literal["easy", "medium", "hard"]
-    question_type: Literal["technical", "project", "conceptual", "problem_solving", "follow_up"]
+    question_type: Literal["technical", "project", "conceptual", "problem_solving", "follow_up", "behavioral", "situational"]
     expected_concepts: list[str] = Field(default_factory=list)
 
     @field_validator("question", "topic", mode="before")

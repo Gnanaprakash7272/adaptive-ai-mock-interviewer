@@ -20,6 +20,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ResumeUploadPage } from './pages/ResumeUploadPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { CareerCoachPage } from './pages/CareerCoachPage';
 
 
 import { useAuth } from './context/AuthContext';
@@ -72,6 +73,7 @@ export const App: React.FC = () => {
                 <Route path="/resume/upload" element={<ProtectedRoute><ResumeUploadPage /></ProtectedRoute>} />
                 <Route path="/resume" element={<Navigate to="/resume/upload" replace />} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+                <Route path="/career-coach" element={<ProtectedRoute><CareerCoachPage /></ProtectedRoute>} />
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>

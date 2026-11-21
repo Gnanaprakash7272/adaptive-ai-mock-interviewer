@@ -5,6 +5,7 @@ import {
   Target,
   History,
   UserCheck,
+  FolderGit2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -18,6 +19,7 @@ interface NavItem {
 export const Sidebar: React.FC = () => {
   const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Portfolio & Villain Agent', path: '/career-coach', icon: FolderGit2, badge: 'AI' },
     { label: 'Candidate Profile', path: '/profile', icon: UserCheck },
     { label: 'Interview Roles', path: '/roles', icon: Target },
     { label: 'Past History', path: '/history', icon: History },

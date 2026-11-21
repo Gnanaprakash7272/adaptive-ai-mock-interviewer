@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck } from 'lucide-react';
+import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck, FolderGit2 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -91,6 +91,20 @@ export const Navbar: React.FC = () => {
                     >
                       <UserCheck className="w-4 h-4 text-brand-500" />
                       Candidate Profile
+                    </Link>
+
+                    <Link
+                      to="/career-coach"
+                      onClick={() => setShowProfileMenu(false)}
+                      className="flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 rounded-xl transition-colors"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <FolderGit2 className="w-4 h-4 text-indigo-500" />
+                        Portfolio & Villain Agent
+                      </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40">
+                        AI
+                      </span>
                     </Link>
 
                     <Link

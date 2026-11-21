@@ -228,6 +228,12 @@ class _InterviewStateOptional(TypedDict, total=False):
     """
 
     # --- Result ---
+    round_type: Literal["technical", "behavioral"]
+    """
+    Round type: "technical" (default) or "behavioral".
+    Controls question style, topics, and evaluation criteria.
+    """
+
     final_report: ReportDict
     """
     The completed interview report dict produced by generate_final_report.

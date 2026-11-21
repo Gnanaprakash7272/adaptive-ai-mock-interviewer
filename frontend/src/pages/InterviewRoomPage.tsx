@@ -46,6 +46,7 @@ export const InterviewRoomPage: React.FC = () => {
 
   const [pendingCompleted, setPendingCompleted] = useState(false);
   const [roleTitle, setRoleTitle] = useState('Engineer');
+  const [roundType, setRoundType] = useState<'technical' | 'behavioral'>('technical');
 
   // ============================================================
   // INITIALIZE / RESTORE INTERVIEW
@@ -73,6 +74,9 @@ export const InterviewRoomPage: React.FC = () => {
         setQuestions([initialQ]);
         setTotalQuestions(state.maxQuestions || 5);
         setRoleTitle(state.roleTitle || 'Engineer');
+        if (state.roundType) {
+          setRoundType(state.roundType);
+        }
         setIsInitializing(false);
 
         // Clear state so reload doesn't reuse the initial state
@@ -110,6 +114,9 @@ export const InterviewRoomPage: React.FC = () => {
         setQuestions([restoredQ]);
         setTotalQuestions(interviewData.max_questions || 5);
         setRoleTitle(interviewData.role || 'Engineer');
+        if (interviewData.round_type) {
+          setRoundType(interviewData.round_type);
+        }
         setCurrentQuestionIndex(0);
         setIsInitializing(false);
       } catch (err: any) {
@@ -412,7 +419,15 @@ export const InterviewRoomPage: React.FC = () => {
               {roleTitle} Interview
             </h2>
 
-            <span className="hidden sm:inline-flex text-xs px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-700 dark:text-brand-300 font-semibold border border-brand-500/20 truncate max-w-[180px]">
+            <span className={`text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold border ${
+              roundType === 'behavioral'
+                ? 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-300/40'
+                : 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300/40'
+            }`}>
+              {roundType === 'behavioral' ? 'HR / Behavioral' : 'Technical'}
+            </span>
+
+            <span className="hidden md:inline-flex text-xs px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-700 dark:text-brand-300 font-semibold border border-brand-500/20 truncate max-w-[180px]">
               {currentQuestion?.category || 'General'}
             </span>
 
@@ -473,7 +488,9 @@ export const InterviewRoomPage: React.FC = () => {
               QUESTION PANEL
           ===================================================== */}
 
-          <Card className="min-h-0 p-5 pt-8 border-l-4 border-l-brand-500 flex flex-col justify-start overflow-hidden">
+          <Card className={`min-h-0 p-5 pt-8 border-l-4 flex flex-col justify-start overflow-hidden ${
+            roundType === 'behavioral' ? 'border-l-purple-500' : 'border-l-brand-500'
+          }`}>
 
             <div className="mb-4 shrink-0">
 
@@ -489,13 +506,17 @@ export const InterviewRoomPage: React.FC = () => {
 
             <div className="mt-6 flex items-center gap-2 shrink-0">
 
-              <span className="text-xs px-2.5 py-1 rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold">
+              <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${
+                roundType === 'behavioral'
+                  ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                  : 'bg-brand-500/10 text-brand-600 dark:text-brand-400'
+              }`}>
                 {currentQuestion?.category ||
-                  'Technical'}
+                  (roundType === 'behavioral' ? 'Behavioral' : 'Technical')}
               </span>
 
               <span className="text-xs text-slate-400">
-                Technical Interview
+                {roundType === 'behavioral' ? 'HR / Behavioral Round (STAR Method)' : 'Technical Interview'}
               </span>
 
             </div>

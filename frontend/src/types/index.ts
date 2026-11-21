@@ -141,6 +141,7 @@ export interface StartInterviewRequest {
   max_questions: number;
   topic?: string;
   difficulty?: string;
+  round_type?: 'technical' | 'behavioral';
 }
 
 export interface BackendQuestion {
@@ -153,6 +154,7 @@ export interface BackendQuestion {
 export interface StartInterviewResponse {
   success: boolean;
   interview_id: string;
+  round_type?: 'technical' | 'behavioral';
   question: BackendQuestion;
   question_number: number;
   max_questions: number;

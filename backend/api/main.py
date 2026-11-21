@@ -36,6 +36,7 @@ from api.errors import (
     ResumeCleaningFailedError,
     make_error_response,
 )
+from api.coach_router import router as coach_router
 from api.interview_router import router as interview_router
 from api.resume_repository import get_candidate_profile, save_candidate_profile
 from api.role_catalogue import ROLE_CATALOGUE
@@ -169,11 +170,17 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(interview_router)
+app.include_router(coach_router)
 
 
 @app.get("/")
 def root():
     return {"message": "AI MOCKORA API is running"}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "AI MOCKORA API"}
 
 
 # =============================================================================
@@ -446,3 +453,42 @@ def get_interview_history(current_user: UserInfo = Depends(get_current_user)):
         })
 
     return history
+
+
+@app.get("/leaderboard")
+def get_leaderboard(
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Return the top candidates by performance, consistency, and profile."""
+    del current_user
+    try:
+        rows = repo.get_leaderboard()
+    except Exception as exc:
+        logger.error("get_leaderboard failed: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve leaderboard.",
+        ) from exc
+
+    leaderboard = []
+    previous_score = None
+    current_rank = 0
+
+    for index, row in enumerate(rows, start=1):
+        score = round(float(row["leaderboard_score"] or 0), 2)
+        if score != previous_score:
+            current_rank = index
+            previous_score = score
+
+        leaderboard.append({
+            "rank": current_rank,
+            "userId": row["user_id"],
+            "fullName": row["name"],
+            "score": score,
+            "performanceScore": round(float(row["performance_score"] or 0), 2),
+            "consistencyScore": round(float(row["consistency_score"] or 0), 2),
+            "profileScore": round(float(row["profile_score"] or 0), 2),
+            "interviewsCompleted": row["interviews_completed"],
+        })
+
+    return leaderboard

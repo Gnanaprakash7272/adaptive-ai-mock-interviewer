@@ -13,7 +13,7 @@ Endpoints:
 
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 def log_latency(msg, *args):
     formatted = msg % args
@@ -51,7 +51,12 @@ def _public_question(question: dict[str, Any] | None) -> dict[str, Any] | None:
 class StartInterviewRequest(BaseModel):
     """Minimum information required to begin a new interview session."""
     role: str = Field(..., min_length=1, description="Target job role, e.g. 'Backend Engineer'.")
-
+    topic: str | None = Field(default=None, description="Optional starting topic.")
+    difficulty: str | None = Field(default=None, description="Optional starting difficulty.")
+    round_type: Literal["technical", "behavioral"] = Field(
+        default="technical",
+        description="Interview round type: 'technical' or 'behavioral'."
+    )
     max_questions: int = Field(
         default=10,
         gt=0,
@@ -160,15 +165,22 @@ def start_interview(
 
     config = {"configurable": {"thread_id": interview_id}}
 
+    difficulty_val = "medium"
+    if request.difficulty and request.difficulty.lower() in ("easy", "medium", "hard"):
+        difficulty_val = request.difficulty.lower()
+
+    selected_topic = (request.topic or "").strip()
+
     initial_state = {
         "user_id": user_id,
         "interview_id": int_id,
         "role": request.role.strip(),
         "candidate_profile": profile,
+        "round_type": request.round_type,
         "max_questions": request.max_questions,
-        "available_topics": [],
-        "current_topic": "",
-        "current_difficulty": "medium",
+        "available_topics": [selected_topic] if selected_topic else [],
+        "current_topic": selected_topic,
+        "current_difficulty": difficulty_val,
         "topics_covered": [],
         "current_question": None,
         "current_answer": None,
@@ -228,6 +240,7 @@ def start_interview(
     return {
         "success": True,
         "interview_id": interview_id,
+        "round_type": values.get("round_type", request.round_type),
         "question": _public_question(current_q),
         "question_number": values.get("question_count"),
         "max_questions": values.get("max_questions"),

@@ -350,10 +350,31 @@ def create_interview_plan(state: InterviewState) -> dict:
         )
 
     interview_brief = build_interview_brief(role, candidate_profile)
-    role_topics, candidate_topics, available_topics = plan_interview_topics(
-        interview_brief,
-        candidate_profile,
-    )
+    round_type = state.get("round_type", "technical")
+    if round_type == "behavioral":
+        role_topics = [
+            "Conflict Resolution & Team Collaboration",
+            "Leadership & Ownership",
+            "Handling Deadlines, Pressure & Setbacks",
+            "Cross-functional Communication",
+            "Technical Decision-Making & Trade-offs",
+            "Adaptability & Continuous Learning",
+        ]
+        candidate_topics = []
+        projects = candidate_profile.get("projects") or []
+        for p in projects[:3]:
+            if isinstance(p, dict) and p.get("title"):
+                candidate_topics.append(f"Project Challenge: {p['title']}")
+        experience = candidate_profile.get("experience") or []
+        for exp in experience[:2]:
+            if isinstance(exp, dict) and exp.get("company"):
+                candidate_topics.append(f"Experience at {exp['company']}")
+        available_topics = role_topics + candidate_topics
+    else:
+        role_topics, candidate_topics, available_topics = plan_interview_topics(
+            interview_brief,
+            candidate_profile,
+        )
 
     # Resolve current_topic.
     current_topic: str = state.get("current_topic", "").strip()
@@ -384,6 +405,7 @@ def create_interview_plan(state: InterviewState) -> dict:
         "interview_brief":             interview_brief,
         "current_topic":               current_topic,
         "current_difficulty":          current_difficulty,
+        "round_type":                  round_type,
         "topics_covered":              [],
         "followups_on_current_topic":  0,
         "max_followups_per_topic":     max_followups_per_topic(),
@@ -446,6 +468,7 @@ def generate_question(state: InterviewState) -> dict:
         history,
         adaptive_action,
         interview_brief=interview_brief,
+        round_type=state.get("round_type", "technical"),
     )
     log_latency("[LATENCY] node_generate_question duration=%.3fs", time.monotonic() - _t_gq)
 
@@ -541,6 +564,7 @@ def process_answer(state: InterviewState) -> dict:
         recent_turns=history,
         interview_brief=state.get("interview_brief"),
         next_topic_if_needed=next_topic_if_needed,
+        round_type=state.get("round_type", "technical"),
     )
     log_latency("[LATENCY] node_process_answer_inference duration=%.3fs", time.monotonic() - _t_ea)
 
@@ -792,6 +816,7 @@ def generate_final_report(state: InterviewState) -> dict:
             profile_strengths=profile_strengths,
             interview_demonstrated_strengths=interview_demonstrated,
             interview_knowledge_gaps=interview_gaps,
+            round_type=state.get("round_type", "technical"),
         )
         log_latency("[LATENCY] node_generate_narrative duration=%.3fs", time.monotonic() - _t_nar)
     except Exception:

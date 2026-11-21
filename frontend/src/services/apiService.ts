@@ -1,4 +1,12 @@
 import type {
+  PivotPlan,
+  IntakeRequest,
+  PlanAdjustment,
+  JobApplication,
+  ApplicationTrends,
+} from '../types/coach';
+
+import type {
   User,
   Resume,
   Role,
@@ -446,5 +454,156 @@ export const apiService = {
       // Backend unavailable — return empty list rather than fake data
     }
     return [];
+  },
+};
+
+
+export const coachApi = {
+  async getPlan(): Promise<PivotPlan> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/plan`);
+    if (!response.ok) {
+      throw new Error(`Failed to load pivot plan: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async runIntake(payload: IntakeRequest): Promise<PivotPlan> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/intake`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to execute career intake: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async toggleTask(weekNumber: number, taskId: string): Promise<PivotPlan> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(
+      `${baseUrl}/coach/milestone/${weekNumber}/task/${taskId}/toggle`,
+      { method: 'POST' }
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to toggle task: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async adaptPlan(payload: {
+    mock_topic: string;
+    score: number;
+    weak_concepts?: string[];
+    interview_id?: string;
+  }): Promise<PlanAdjustment> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/adapt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to adapt plan: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getApplications(): Promise<JobApplication[]> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/applications`);
+    if (!response.ok) {
+      throw new Error(`Failed to load applications: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async addApplication(payload: {
+    company: string;
+    role_title: string;
+    job_url?: string;
+    status?: string;
+    match_score?: number;
+    notes?: string;
+  }): Promise<JobApplication> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/applications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create application: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async updateApplication(
+    appId: string,
+    updates: Partial<JobApplication>
+  ): Promise<JobApplication> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/applications/${appId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update application: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async deleteApplication(appId: string): Promise<{ success: boolean }> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/applications/${appId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete application: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getAnalytics(): Promise<ApplicationTrends> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/analytics`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch application analytics: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async addPortfolioProject(project: any): Promise<PivotPlan> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/portfolio/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(project),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to add portfolio project: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async villainChat(payload: {
+    message: string;
+    conversation_history: Array<{ role: string; content: string }>;
+    resume_context?: any;
+    target_role?: string;
+  }): Promise<import('../types/coach').VillainChatResponse> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/coach/villain/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Career Villain agent error: ${response.statusText}`);
+    }
+    return response.json();
   },
 };

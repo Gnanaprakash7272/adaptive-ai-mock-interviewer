@@ -4,8 +4,19 @@ import os
 import random
 import re
 import time
+from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
+# Ensure root .env is loaded into environment
+_root_env = Path(__file__).resolve().parent.parent / ".env"
+if _root_env.exists():
+    load_dotenv(dotenv_path=_root_env, override=False)
+else:
+    load_dotenv(override=False)
+
+import requests
 from google import genai
 from google.genai import types
 
@@ -30,6 +41,7 @@ _client_cache: dict[str, genai.Client] = {}
 
 # Request timeout in seconds (configurable via env; 0 = no timeout).
 _TIMEOUT_SECONDS: float = float(os.environ.get("GEMINI_REQUEST_TIMEOUT_SECONDS", "60"))
+_GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def _get_client(api_key: str) -> genai.Client:
@@ -65,14 +77,132 @@ def get_api_keys() -> list[tuple[str, str]]:
 def get_model_chain() -> list[str]:
     """
     Reads the primary model and ordered fallback list from env.
-    Primary default: gemini-3.5-flash-lite
-    Fallback default: gemini-3.5-flash
+    Primary default: gemini-2.0-flash
+    Fallback default: gemini-1.5-flash
     """
-    primary = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
-    fallback_str = os.environ.get("GEMINI_MODEL_FALLBACKS", "gemini-3.5-flash").strip()
+    primary = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
+    fallback_str = os.environ.get("GEMINI_MODEL_FALLBACKS", "gemini-1.5-flash").strip()
 
     fallbacks = [m.strip() for m in fallback_str.split(",") if m.strip()]
     return [primary] + fallbacks
+
+
+def _configured_provider() -> str:
+    """Return the configured provider, defaulting to Gemini for compatibility."""
+    provider = os.environ.get("AI_PROVIDER", "gemini").strip().lower()
+    if provider not in {"gemini", "groq"}:
+        raise RuntimeError(
+            f"Unsupported AI_PROVIDER={provider!r}. Expected 'gemini' or 'groq'."
+        )
+    return provider
+
+
+def _call_groq(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_output_tokens: int,
+    temperature: float,
+    operation: str,
+) -> str:
+    """Call Groq's OpenAI-compatible API and return the response text."""
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("No Groq API key found. Set GROQ_API_KEY in your .env file.")
+
+    primary = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip()
+    fallback_str = os.environ.get(
+        "GROQ_MODEL_FALLBACKS", "openai/gpt-oss-120b,qwen/qwen3.8-27b,llama-3.3-70b-versatile"
+    ).strip()
+    models = [primary] + [m.strip() for m in fallback_str.split(",") if m.strip() and m.strip() != primary]
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    last_error: Exception | None = None
+    for model in models:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_output_tokens,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }
+
+        for attempt in range(1, 4):
+            started = time.monotonic()
+            try:
+                response = requests.post(
+                    _GROQ_API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=_TIMEOUT_SECONDS if _TIMEOUT_SECONDS > 0 else None,
+                )
+                duration = time.monotonic() - started
+                logger.info(
+                    "[LATENCY] groq op=%s model=%s duration=%.3fs status=%s",
+                    operation,
+                    model,
+                    duration,
+                    response.status_code,
+                )
+
+                if response.status_code == 200:
+                    body = response.json()
+                    try:
+                        return body["choices"][0]["message"]["content"]
+                    except (KeyError, IndexError, TypeError) as exc:
+                        raise RuntimeError("Groq returned an invalid response shape.") from exc
+
+                # If 404 (model not found / deprecated) or 429 (rate-limited), rotate to next model immediately
+                if response.status_code in (404, 429):
+                    logger.warning(
+                        "Groq model %s returned %s; rotating to next available model",
+                        model,
+                        response.status_code,
+                    )
+                    last_error = RuntimeError(f"Groq model {model} returned {response.status_code}")
+                    break
+
+                if response.status_code >= 500:
+                    if attempt < 3:
+                        wait = (2 ** attempt) + random.uniform(0, 1)
+                        logger.warning(
+                            "Groq temporary failure status=%s model=%s retry in %.2fs",
+                            response.status_code,
+                            model,
+                            wait,
+                        )
+                        time.sleep(wait)
+                        continue
+
+                detail = response.text[:500]
+                last_error = RuntimeError(
+                    f"[Groq] API request failed with status {response.status_code}: {detail}"
+                )
+                break
+            except requests.RequestException as exc:
+                duration = time.monotonic() - started
+                logger.info(
+                    "[LATENCY] groq op=%s model=%s duration=%.3fs status=error",
+                    operation,
+                    model,
+                    duration,
+                )
+                if attempt < 3:
+                    wait = (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning("Groq request failed; retry in %.2fs: %s", wait, exc)
+                    time.sleep(wait)
+                    continue
+                last_error = RuntimeError(f"[Groq] Request failed: {exc}")
+                break
+
+    raise last_error or RuntimeError(f"[Groq] Request failed after trying models={models}.")
 
 
 def _classify_error(exc: Exception) -> str:
@@ -96,7 +226,7 @@ def _classify_error(exc: Exception) -> str:
         status: str = (getattr(exc, "status", "") or "").upper()
         if code == 429 or status == "RESOURCE_EXHAUSTED":
             return "quota"
-        if code == 503 or status == "UNAVAILABLE":
+        if code in (503, 504, 408) or status in ("UNAVAILABLE", "DEADLINE_EXCEEDED"):
             return "unavail"
         if code == 401 or status in ("UNAUTHENTICATED", "UNAUTHORIZED"):
             return "auth"
@@ -110,6 +240,8 @@ def _classify_error(exc: Exception) -> str:
     for substr, kind in (
         ("RESOURCE_EXHAUSTED", "quota"),
         ("UNAVAILABLE", "unavail"),
+        ("DEADLINE_EXCEEDED", "unavail"),
+        ("GATEWAY_TIMEOUT", "unavail"),
         ("UNAUTHENTICATED", "auth"),
         ("UNAUTHORIZED", "auth"),
         ("PERMISSION_DENIED", "perm"),
@@ -123,6 +255,8 @@ def _classify_error(exc: Exception) -> str:
     for pattern, kind in (
         (r"\b429\b", "quota"),
         (r"\b503\b", "unavail"),
+        (r"\b504\b", "unavail"),
+        (r"\b408\b", "unavail"),
         (r"\b401\b", "auth"),
         (r"\b403\b", "perm"),
         (r"\b404\b", "notfound"),
@@ -171,6 +305,21 @@ def call_gemini(
                      calls where determinism matters; default 1.0 for
                      question generation where creativity is desirable.
     """
+    provider = _configured_provider()
+    if provider == "groq":
+        try:
+            return _call_groq(
+                system_prompt,
+                user_prompt,
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+                operation=operation,
+            )
+        except RuntimeError:
+            if os.environ.get("AI_PROVIDER_FALLBACK", "").strip().lower() != "gemini":
+                raise
+            logger.warning("Groq call failed; falling back to Gemini", exc_info=True)
+
     api_key_entries = get_api_keys()
     if not api_key_entries:
         raise RuntimeError(
@@ -295,7 +444,7 @@ def call_gemini(
                     raise RuntimeError(
                         f"[Gemini] UNEXPECTED ERROR "
                         f"key={key_label} model={model}: {exc}"
-                    )
+                    ) from exc
 
         if all_keys_quota_failed:
             logger.warning(
@@ -359,4 +508,3 @@ def call_gemini_json(
         "Gemini returned invalid JSON.\n"
         f"Raw response:\n{raw_response}"
     ) from last_error
-

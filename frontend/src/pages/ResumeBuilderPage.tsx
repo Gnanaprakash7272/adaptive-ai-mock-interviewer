@@ -570,7 +570,7 @@ export const ExactDocxMatchingPreview: React.FC<{
         </div>
       )}
 
-      {/* ── 4. TECHNICAL SKILLS & CERTIFICATIONS (1000% EXACT MATCH TO IMAGE 2) ── */}
+      {/* ── 4. TECHNICAL SKILLS & CERTIFICATIONS (2-COLUMN BALANCED LAYOUT) ── */}
       <div>
         <div
           style={{
@@ -585,69 +585,69 @@ export const ExactDocxMatchingPreview: React.FC<{
         </div>
         <hr style={{ border: 'none', borderTop: '0.8px solid #000000', margin: '1px 0 2.5px 0' }} />
 
-        {/* Technical Skills Subheading & Categories across full width */}
-        <div style={{ marginBottom: itemMb }}>
-          <div style={{ fontWeight: 'bold', fontSize: subHeadingSize, marginBottom: '1px' }}>
-            Technical Skills
+        {/* 2-Column Side-by-Side Flex Container */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+          {/* Left Column: Technical Skills */}
+          <div style={{ flex: '1.15', minWidth: 0 }}>
+            <div style={{ fontWeight: 'bold', fontSize: subHeadingSize, marginBottom: '1px' }}>Technical Skills</div>
+            <div style={{ fontSize: skillSize, lineHeight: lineHeight }}>
+              <div style={{ marginBottom: '1.5px' }}>
+                <span style={{ fontWeight: 'bold' }}>Languages: </span>
+                <span>{data.technicalSkills.languages}</span>
+              </div>
+              <div style={{ marginBottom: '1.5px' }}>
+                <span style={{ fontWeight: 'bold' }}>Web Technologies: </span>
+                <span>{data.technicalSkills.webTechnologies}</span>
+              </div>
+              <div style={{ marginBottom: '1.5px' }}>
+                <span style={{ fontWeight: 'bold' }}>Tools &amp; Platforms: </span>
+                <span>{data.technicalSkills.toolsPlatforms}</span>
+              </div>
+              <div>
+                <span style={{ fontWeight: 'bold' }}>Core Concepts: </span>
+                <span>{data.technicalSkills.coreConcepts}</span>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: skillSize, lineHeight: lineHeight }}>
-            <div style={{ marginBottom: '1.5px' }}>
-              <span style={{ fontWeight: 'bold' }}>Languages: </span>
-              <span>{data.technicalSkills.languages}</span>
-            </div>
-            <div style={{ marginBottom: '1.5px' }}>
-              <span style={{ fontWeight: 'bold' }}>Web Technologies: </span>
-              <span>{data.technicalSkills.webTechnologies}</span>
-            </div>
-            <div style={{ marginBottom: '1.5px' }}>
-              <span style={{ fontWeight: 'bold' }}>Tools &amp; Platforms: </span>
-              <span>{data.technicalSkills.toolsPlatforms}</span>
-            </div>
-            <div>
-              <span style={{ fontWeight: 'bold' }}>Core Concepts: </span>
-              <span>{data.technicalSkills.coreConcepts}</span>
+
+          {/* Right Column: Certifications with right-aligned clean Link */}
+          <div style={{ flex: '0.85', minWidth: 0 }}>
+            <div style={{ fontWeight: 'bold', fontSize: subHeadingSize, marginBottom: '1px' }}>Certifications</div>
+            <div style={{ fontSize: certSize, lineHeight: lineHeight }}>
+              {data.certifications &&
+                data.certifications.map((cert) => (
+                  <div
+                    key={cert.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      gap: '6px',
+                      marginBottom: '1.5px',
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0 }}>{cert.title}</span>
+                    {cert.link && (
+                      <a
+                        href={cert.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          color: '#0044cc',
+                          textDecoration: 'none',
+                          fontSize: detailSize,
+                          whiteSpace: 'nowrap',
+                          marginLeft: '6px',
+                        }}
+                      >
+                        [Link]
+                      </a>
+                    )}
+                  </div>
+                ))}
             </div>
           </div>
         </div>
-
-        {/* Certifications Subheading & 3-Column Grid across full width as in Image 2 */}
-        {data.certifications && data.certifications.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 'bold', fontSize: subHeadingSize, marginBottom: '1px' }}>
-              Certifications
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '2px 12px',
-                fontSize: certSize,
-                lineHeight: lineHeight,
-              }}
-            >
-              {data.certifications.map((cert) => (
-                <div key={cert.id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px' }}>
-                  <span>{cert.title}</span>
-                  {cert.link && (
-                    <a
-                      href={cert.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        color: '#0044cc',
-                        textDecoration: 'none',
-                        fontWeight: 'normal',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      [Link]
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── 5. COMPETITIVE PROGRAMMING (1000% EXACT MATCH TO SAMPLE DOCX) ── */}

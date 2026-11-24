@@ -307,7 +307,7 @@ export const ExactDocxMatchingPreview: React.FC<{
         width: '210mm',
         height: '297mm',
         maxHeight: '297mm',
-        padding: '5mm 4mm 5mm 4mm',
+        padding: '8mm 7mm 7mm 7mm',
         fontFamily: "'Times New Roman', Times, serif",
         fontSize: detailSize,
         lineHeight: lineHeight,
@@ -323,16 +323,16 @@ export const ExactDocxMatchingPreview: React.FC<{
         gap: spacingDensity === 'compact' ? '6px' : undefined,
       }}
     >
-      {/* ── HEADER (1000% EXACT MATCH TO SAMPLE DOCX IMAGE 1) ─────────────── */}
+      {/* ── HEADER (CLASSIC SERIF TEMPLATE AS FIRST REQUESTED) ─────────────── */}
       <div style={{ textAlign: 'center', marginBottom: '1.5px' }}>
-        {/* Name: Bold Sans-Serif (Calibri, Arial, Segoe UI), Uppercase */}
+        {/* Name: Times New Roman, Bold, Uppercase */}
         <h1
           style={{
-            fontFamily: "Calibri, Arial, 'Segoe UI', Helvetica, sans-serif",
+            fontFamily: "'Times New Roman', Times, serif",
             fontSize: nameSize,
             fontWeight: 'bold',
-            letterSpacing: '0.02em',
-            margin: '0 0 2px 0',
+            letterSpacing: '0.04em',
+            margin: '0 0 1px 0',
             textTransform: 'uppercase',
             color: '#000000',
             lineHeight: 1.15,
@@ -341,7 +341,30 @@ export const ExactDocxMatchingPreview: React.FC<{
           {data.fullName}
         </h1>
 
-        {/* All contact info on ONE SINGLE ROW without underlines */}
+        {/* Location: Centered on its own line below Name */}
+        {data.location && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: locSize,
+              marginTop: '1px',
+              marginBottom: '2px',
+              color: '#000000',
+            }}
+          >
+            <img
+              src={ICON_LOCATION}
+              alt=""
+              style={{ height: '11px', width: 'auto', display: 'inline-block', verticalAlign: 'middle' }}
+            />
+            <span>{data.location}</span>
+          </div>
+        )}
+
+        {/* Contact Links Row: Single line, Underlined links, Phone + Email + LinkedIn + GitHub */}
         <div
           style={{
             display: 'flex',
@@ -354,19 +377,6 @@ export const ExactDocxMatchingPreview: React.FC<{
             lineHeight: 1.2,
           }}
         >
-          {data.email && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
-              <img
-                src={ICON_EMAIL}
-                alt=""
-                style={{ height: '9px', width: 'auto', display: 'inline-block', verticalAlign: 'middle' }}
-              />
-              <a href={`mailto:${data.email}`} className="contact-link" style={{ color: '#000000', textDecoration: 'none' }}>
-                {data.email}
-              </a>
-            </span>
-          )}
-
           {data.phone && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
               <img
@@ -378,14 +388,16 @@ export const ExactDocxMatchingPreview: React.FC<{
             </span>
           )}
 
-          {data.location && (
+          {data.email && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
               <img
-                src={ICON_LOCATION}
+                src={ICON_EMAIL}
                 alt=""
-                style={{ height: '11px', width: 'auto', display: 'inline-block', verticalAlign: 'middle' }}
+                style={{ height: '9px', width: 'auto', display: 'inline-block', verticalAlign: 'middle' }}
               />
-              <span>{data.location}</span>
+              <a href={`mailto:${data.email}`} style={{ color: '#000000', textDecoration: 'underline' }}>
+                {data.email}
+              </a>
             </span>
           )}
 
@@ -400,8 +412,7 @@ export const ExactDocxMatchingPreview: React.FC<{
                 href={data.linkedinUrl || '#'}
                 target="_blank"
                 rel="noreferrer"
-                className="contact-link"
-                style={{ color: '#000000', textDecoration: 'none' }}
+                style={{ color: '#000000', textDecoration: 'underline' }}
               >
                 {data.linkedinText}
               </a>
@@ -419,8 +430,7 @@ export const ExactDocxMatchingPreview: React.FC<{
                 href={data.githubUrl || '#'}
                 target="_blank"
                 rel="noreferrer"
-                className="contact-link"
-                style={{ color: '#000000', textDecoration: 'none' }}
+                style={{ color: '#000000', textDecoration: 'underline' }}
               >
                 {data.githubText}
               </a>
@@ -1336,7 +1346,7 @@ export const ResumeBuilderPage: React.FC = () => {
             width: 210mm !important;
             height: 297mm !important;
             max-height: 297mm !important;
-            padding: 5mm 4mm 5mm 4mm !important;
+            padding: 8mm 7mm 7mm 7mm !important;
             margin: 0 !important;
             box-shadow: none !important;
             page-break-after: avoid !important;
@@ -2324,10 +2334,28 @@ export const ResumeBuilderPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Exact A4 Sheet Visualizer with 1-Page Frame */}
-            <div className="border border-slate-200 dark:border-border-dark rounded-2xl p-4 bg-slate-200/60 dark:bg-slate-900/40 overflow-x-auto shadow-inner flex justify-center">
-              <div className="transform origin-top scale-[0.82] 2xl:scale-[0.9] transition-transform">
-                <ExactDocxMatchingPreview data={data} textScale={textScale} spacingDensity={spacingDensity} />
+            {/* Exact A4 Sheet Visualizer with 1-Page Frame (Zero Clipping) */}
+            <div className="border border-slate-200 dark:border-border-dark rounded-2xl p-4 bg-slate-200/60 dark:bg-slate-900/40 overflow-x-auto shadow-inner flex items-start justify-center">
+              <div
+                style={{
+                  width: 'calc(210mm * 0.74)',
+                  height: 'calc(297mm * 0.74)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                }}
+              >
+                <div
+                  style={{
+                    width: '210mm',
+                    height: '297mm',
+                    transform: 'scale(0.74)',
+                    transformOrigin: 'top left',
+                  }}
+                >
+                  <ExactDocxMatchingPreview data={data} textScale={textScale} spacingDensity={spacingDensity} />
+                </div>
               </div>
             </div>
           </div>

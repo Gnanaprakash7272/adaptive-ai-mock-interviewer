@@ -77,6 +77,16 @@ def _make_table_mock(name=""):
 
 _mock_supabase.table.side_effect = _make_table_mock
 
+# The repository's local `supabase/` migrations directory shadows the
+# third-party package when pytest adds the project root to sys.path. Provide
+# only the symbols required by api.db before applying the client patch.
+import supabase as _supabase_module  # noqa: E402
+
+if not hasattr(_supabase_module, "create_client"):
+    _supabase_module.create_client = lambda *_args, **_kwargs: _mock_supabase
+if not hasattr(_supabase_module, "Client"):
+    _supabase_module.Client = object
+
 _create_client_patch = patch("supabase.create_client", return_value=_mock_supabase)
 _create_client_patch.start()
 

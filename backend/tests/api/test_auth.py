@@ -1,4 +1,9 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 from unittest.mock import MagicMock, patch
 
 import jwt
@@ -10,6 +15,7 @@ from api.auth import (
     decode_access_token,
     hash_otp,
     hash_password,
+    send_welcome_email,
     verify_password,
 )
 from api.main import app
@@ -84,6 +90,72 @@ def test_1_successful_signup():
     assert "user_id" not in data  # must not leak account existence
 
     print("PASS  test_1_successful_signup")
+
+
+def test_signup_sends_welcome_email():
+    """Verify a newly created account triggers a welcome email."""
+    mock_supabase, _ = make_supabase_mock(
+        select_data=[],
+        insert_data=[{"user_id": 42, "email": "newuser@example.com"}],
+    )
+
+    with (
+        patch("api.auth.supabase", mock_supabase),
+        patch("api.auth.send_welcome_email", return_value=True) as send_email,
+    ):
+        response = client.post(
+            "/auth/signup",
+            json={
+                "name": "New User",
+                "email": "newuser@example.com",
+                "password": "SecurePassword123!",
+            },
+        )
+
+    assert response.status_code == 200
+    send_email.assert_called_once_with("newuser@example.com", "New User")
+
+
+def test_signup_succeeds_when_welcome_email_fails():
+    """Email delivery failure must not invalidate an already-created account."""
+    mock_supabase, _ = make_supabase_mock(
+        select_data=[],
+        insert_data=[{"user_id": 42, "email": "newuser@example.com"}],
+    )
+
+    with (
+        patch("api.auth.supabase", mock_supabase),
+        patch("api.auth.send_welcome_email", return_value=False),
+    ):
+        response = client.post(
+            "/auth/signup",
+            json={
+                "name": "New User",
+                "email": "newuser@example.com",
+                "password": "SecurePassword123!",
+            },
+        )
+
+    assert response.status_code == 200
+
+
+def test_welcome_email_uses_configured_smtp():
+    """Verify welcome email delivery uses SMTP and includes the recipient."""
+    smtp = MagicMock()
+    smtp_context = smtp.__enter__.return_value
+
+    with (
+        patch("api.auth.SMTP_USERNAME", "smtp-user@example.com"),
+        patch("api.auth.SMTP_PASSWORD", "smtp-password"),
+        patch("api.auth.smtplib.SMTP", return_value=smtp),
+    ):
+        assert send_welcome_email("newuser@example.com", "New User") is True
+
+    smtp_context.starttls.assert_called_once_with()
+    smtp_context.login.assert_called_once_with("smtp-user@example.com", "smtp-password")
+    message = smtp_context.send_message.call_args.args[0]
+    assert message["To"] == "newuser@example.com"
+    assert message["Subject"] == "Welcome to AI MOCKORA"
 
 
 def test_2_duplicate_email():

@@ -169,7 +169,13 @@ def process_candidate_answer(
     sys_prompt = BEHAVIORAL_PROCESS_SYSTEM_PROMPT if round_type == "behavioral" else SYSTEM_PROMPT
     last_error: Exception | None = None
     for _ in range(2):
-        payload = call_gemini_json(sys_prompt, user_prompt, max_output_tokens=1500, temperature=0.2, operation="process_answer")
+        payload = call_gemini_json(
+            sys_prompt,
+            user_prompt,
+            max_output_tokens=900,
+            temperature=0.2,
+            operation="process_answer",
+        )
         try:
             return parse_model(ProcessAnswerOutput, payload)
         except ValidationError as exc:

@@ -1,10 +1,13 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Target,
   History,
   UserCheck,
+  Trophy,
+  FolderGit2,
+  FileText,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -18,9 +21,12 @@ interface NavItem {
 export const Sidebar: React.FC = () => {
   const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Portfolio & Villain Agent', path: '/career-coach', icon: FolderGit2, badge: 'AI' },
+    { label: 'Resume Builder', path: '/resume/build', icon: FileText, badge: 'NEW' },
     { label: 'Candidate Profile', path: '/profile', icon: UserCheck },
     { label: 'Interview Roles', path: '/roles', icon: Target },
     { label: 'Past History', path: '/history', icon: History },
+    { label: 'Leaderboard', path: '/leaderboard', icon: Trophy },
   ];
 
   return (
@@ -62,6 +68,30 @@ export const Sidebar: React.FC = () => {
           })}
         </div>
 
+        {/* Pro Plan Upgrade Card */}
+        <div className="mt-auto pt-4">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-brand-50 to-indigo-50/60 dark:from-brand-950/40 dark:to-indigo-950/30 border border-brand-200/80 dark:border-brand-800/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+                Mockora Pro
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-brand-600 text-white">
+                25% OFF
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
+              Unlock unlimited Voice AI audio interviews &amp; FAANG rubrics.
+            </p>
+            <Link to="/pricing">
+              <button
+                type="button"
+                className="w-full py-1.5 text-[11px] font-bold text-center rounded-xl bg-brand-600 hover:bg-brand-700 text-white shadow-sm transition-colors"
+              >
+                Upgrade to Pro
+              </button>
+            </Link>
+          </div>
+        </div>
       </aside>
 
       {/* Mobile Bottom Navigation Bar */}

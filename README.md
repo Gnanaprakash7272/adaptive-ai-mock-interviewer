@@ -28,6 +28,7 @@ Preparing for technical interviews is broken:
 - **Adaptive Difficulty**: AI adjusts the interview's difficulty and topic based on the technical depth of your previous answers.
 - **Immediate Evaluation**: Every answer is scored for correctness, completeness, and missing concepts.
 - **Comprehensive Final Reports**: Generates actionable insights, highlighting your demonstrated strengths and knowledge gaps.
+- **Performance Leaderboard**: Ranks candidates using interview performance, score consistency, and profile strength.
 - **Resilient AI Orchestration**: Multi-turn conversational memory powered by LangGraph ensures state is never lost.
 
 ---
@@ -121,9 +122,9 @@ MOCKORA is built on a modern, decoupled architecture designed for scale and main
               └────────┬────────┘
                        │
                        ▼
-                  ┌─────────┐
-                  │ Gemini  │
-                  └────┬────┘
+                  ┌─────────────────┐
+                  │ Gemini / Groq   │
+                  └───────┬─────────┘
                        │
                        ▼
               ┌─────────────────┐
@@ -164,7 +165,7 @@ LangGraph coordinates these components as a stateful interview workflow.
 ## Tech Stack
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, Framer Motion, Lucide Icons.
 - **Backend**: FastAPI, Python 3.13, `uv` (dependency management), PyJWT.
-- **AI / LLM**: Google Gemini API, LangGraph, PyMuPDF (PDF parsing).
+- **AI / LLM**: Google Gemini API or Groq (configurable), LangGraph, PyMuPDF (PDF parsing).
 - **Database**: Supabase (PostgreSQL), `supabase-py`, `asyncpg`.
 
 ---
@@ -183,13 +184,28 @@ adaptive-ai-mock-interviewer/
 ├── resume_intelligence/   # PDF parsing and candidate profile extraction
 ├── frontend/              # React + Vite frontend application
 ├── ai_schemas.py          # Pydantic schemas for LLM structured outputs
-├── gemini_config.py       # Centralized Gemini model configuration
+├── gemini_config.py       # Centralized Gemini/Groq model configuration
 ├── pyproject.toml         # Python project metadata
 ├── pytest.ini             # Pytest configuration
 ├── requirements.txt       # Pinned-range dependencies (mirrors pyproject.toml)
 ├── uv.lock                # Locked dependencies for uv
 └── README.md              # Project documentation
 ```
+
+### Using Groq
+
+Groq can be selected for lower-latency interview responses without changing
+the application code:
+
+```env
+AI_PROVIDER=groq
+GROQ_API_KEY="your-groq-api-key"
+GROQ_MODEL=llama-3.3-70b-versatile
+AI_PROVIDER_FALLBACK=gemini
+```
+
+Gemini remains the default. Keep API keys only in the backend environment and
+never expose them in frontend variables or source control.
 
 ---
 
@@ -308,8 +324,9 @@ MOCKORA includes a comprehensive, decoupled test suite.
 **Run the suite:**
 ```bash
 cd backend
-uv run pytest -q -m "not e2e"
+uv run pytest -q -c pytest.ini tests
 ```
+This command uses the backend-specific pytest configuration and excludes the live E2E tests.
 The `e2e` tests need a running API server and real credentials, so they are skipped by default (and in CI).
 
 **Latest Validation:**

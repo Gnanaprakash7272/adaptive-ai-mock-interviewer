@@ -6,13 +6,18 @@ import re
 import secrets
 import smtplib
 import string
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, field_validator
 from slowapi import Limiter
@@ -62,7 +67,19 @@ def get_client_ip(request: Request) -> str:
 # Use a lambda so tests can patch ``get_client_ip`` and have the effect
 # reflected at call time (a direct reference would capture the original
 # function object and ignore the patch).
-limiter = Limiter(key_func=lambda request: get_client_ip(request))
+# ---------------------------------------------------------------------------
+# SlowAPI rate limiter — Redis-backed if REDIS_URL is set, in-memory otherwise.
+# ---------------------------------------------------------------------------
+_REDIS_URL = os.getenv("REDIS_URL", "").strip()
+if _REDIS_URL:
+    try:
+        limiter = Limiter(key_func=lambda request: get_client_ip(request), storage_uri=_REDIS_URL)
+        logger.info("[RateLimit] Redis-backed rate limiter initialized with %s", _REDIS_URL)
+    except Exception as _redis_err:
+        logger.warning("[RateLimit] Failed to connect Redis (%s); falling back to in-memory", _redis_err)
+        limiter = Limiter(key_func=lambda request: get_client_ip(request))
+else:
+    limiter = Limiter(key_func=lambda request: get_client_ip(request))
 
 
 # Rate limit configurations (configurable via env for dev/staging flexibility)
@@ -277,6 +294,39 @@ class LoginResponse(BaseModel):
     user: UserInfo
 
 
+def send_welcome_email(email: str, name: str) -> bool:
+    """Send a welcome email after a new account is created."""
+    if not SMTP_USERNAME or not SMTP_PASSWORD:
+        logger.error("Welcome email is not configured")
+        return False
+
+    msg = MIMEMultipart()
+    msg["From"] = f"AI MOCKORA <{FROM_EMAIL}>"
+    msg["To"] = email
+    msg["Subject"] = "Welcome to AI MOCKORA"
+    greeting = name.strip() or email.split("@")[0]
+    msg.attach(
+        MIMEText(
+            f"Hi {greeting},\n\n"
+            "Welcome to AI MOCKORA. Your account is ready for AI-powered mock interviews.\n\n"
+            "You can now sign in and start practicing.\n\n"
+            "If you did not create this account, please contact support.",
+            "plain",
+        )
+    )
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        logger.info("Welcome email sent")
+        return True
+    except Exception:
+        logger.exception("Welcome email delivery failed")
+        return False
+
+
 # (no custom rate-limiter code — SlowAPI decorators on endpoints handle this)
 
 
@@ -329,6 +379,9 @@ def signup(request: Request, body: SignupRequest):
                 detail="Failed to create user account",
             )
 
+        if not send_welcome_email(email, body.name):
+            logger.warning("User account created but welcome email could not be sent")
+
         return SignupResponse()
 
     except HTTPException:
@@ -343,13 +396,11 @@ def signup(request: Request, body: SignupRequest):
 
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit(LOGIN_RATE_LIMIT)
-def login(request: Request, body: LoginRequest):
+def login(request: Request, body: LoginRequest, response: Response):
     """
     Authenticate user and issue JWT.
-
-    - Verifies password hash using constant-time comparison.
-    - Includes token_version in the JWT so the token can be invalidated
-      (e.g. after a password reset) by incrementing token_version in the DB.
+    Token is returned in both JSON body (for SPA localStorage compat)
+    AND as an httpOnly Secure cookie (preferred for security).
     """
     email = body.email
 
@@ -390,6 +441,20 @@ def login(request: Request, body: LoginRequest):
             "token_version": token_version,
         }
         access_token = create_access_token(token_payload)
+
+        # Set httpOnly Secure cookie — preferred auth transport.
+        # SameSite=lax is used instead of strict to allow cross-origin
+        # redirects from OAuth flows while blocking CSRF.
+        is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+        response.set_cookie(
+            key="ai_mockora_token",
+            value=access_token,
+            httponly=True,
+            secure=is_production,
+            samesite="lax",
+            max_age=JWT_EXPIRE_MINUTES * 60,
+            path="/",
+        )
 
         return LoginResponse(
             access_token=access_token,
@@ -476,6 +541,55 @@ def get_current_user(
         ) from None
 
     return UserInfo(user_id=user_id, email=email, username=username, name=name)
+
+
+# ============================================================================
+# Cookie-based Auth Helpers — /auth/me and /auth/logout
+# ============================================================================
+
+@router.get("/me")
+def get_me(request: Request) -> dict:
+    """
+    Returns the authenticated user's info.
+    Accepts Bearer token (Authorization header) OR httpOnly cookie (ai_mockora_token).
+    Frontend can call this on page load to restore session without exposing the token to JS.
+    """
+    # Prefer cookie, fall back to Authorization header
+    token = request.cookies.get("ai_mockora_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    try:
+        payload = decode_access_token(token)
+        user_id = payload.get("user_id")
+        email = payload.get("email")
+        if not user_id or not email:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token claims")
+        return {
+            "user_id": user_id,
+            "email": email,
+            "username": payload.get("username", email.split("@")[0]),
+            "name": payload.get("name", ""),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from None
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """
+    Clears the httpOnly auth cookie, logging the user out.
+    Frontend should also clear localStorage as a belt-and-suspenders measure.
+    """
+    response.delete_cookie(key="ai_mockora_token", path="/")
+    return {"success": True, "message": "Logged out successfully"}
 
 
 # ============================================================================

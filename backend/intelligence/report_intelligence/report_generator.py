@@ -43,6 +43,8 @@ Rules:
 2. Do not claim the candidate knows something merely because it appeared on the resume.
 3. Keep feedback constructive and actionable.
 4. List explicit strengths, weaknesses, and recommendations based on interview answers.
+5. Keep the report concise: summary under 120 words, and no more than 4 items
+   in each list. Each list item should be one sentence.
 """
 
 BEHAVIORAL_REPORT_PROMPT = f"""
@@ -57,6 +59,8 @@ Rules:
 2. Distinguish resume claims from demonstrated behavioral performance during the interview.
 3. Keep feedback constructive, actionable, and encouraging.
 4. List explicit behavioral strengths, areas for growth, and coaching recommendations.
+5. Keep the report concise: summary under 120 words, and no more than 4 items
+   in each list. Each list item should be one sentence.
 """
 
 
@@ -135,7 +139,13 @@ def generate_narrative(
         )
 
     sys_prompt = BEHAVIORAL_REPORT_PROMPT if round_type == "behavioral" else SYSTEM_PROMPT
-    payload = call_gemini_json(sys_prompt, user_prompt, max_output_tokens=3000, operation="generate_narrative")
+    payload = call_gemini_json(
+        sys_prompt,
+        user_prompt,
+        max_output_tokens=1200,
+        temperature=0.2,
+        operation="generate_narrative",
+    )
     try:
         return parse_model(NarrativeOutput, payload)
     except ValidationError:
@@ -143,7 +153,8 @@ def generate_narrative(
         payload = call_gemini_json(
             sys_prompt,
             user_prompt + "\nRETRY: Return valid JSON matching the schema.",
-            max_output_tokens=3000,
+            max_output_tokens=1200,
+            temperature=0.2,
             operation="generate_narrative",
         )
         return parse_model(NarrativeOutput, payload)

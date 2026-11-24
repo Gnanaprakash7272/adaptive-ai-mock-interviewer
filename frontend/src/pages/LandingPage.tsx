@@ -17,12 +17,16 @@ import {
   Award,
   Terminal,
   Sparkles,
+  Star,
+  Check,
 } from 'lucide-react';
 
 import { Button } from '../components/common/Button';
 import { Logo } from '../components/common/Logo';
+import { useCookie } from '../context/CookieContext';
 
 export const LandingPage: React.FC = () => {
+  const { openPreferencesModal } = useCookie();
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
   const toggleFaq = (index: number) => {
@@ -653,6 +657,151 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
+        {/* ───────────────────────── CANDIDATE TESTIMONIALS ───────────────────────── */}
+        <section className="relative z-10 py-24 sm:py-28">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+            <div className="mx-auto max-w-2xl text-center">
+              <span className="text-xs font-extrabold uppercase tracking-widest text-brand-600 dark:text-brand-400">
+                Wall of Success
+              </span>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl lg:text-5xl dark:text-white">
+                Engineers Landing Top Tech Offers
+              </h2>
+              <p className="mt-4 text-base text-slate-600 dark:text-slate-400">
+                Real feedback from candidates who practiced system design, full-stack, and behavioral loops on Mockora.
+              </p>
+            </div>
+
+            <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="p-7 rounded-3xl border border-slate-200/80 dark:border-white/5 bg-white dark:bg-surface-dark-card shadow-sm space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1 text-amber-500">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} className="w-4 h-4 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300 italic">
+                    &quot;The distributed systems follow-ups on cache stampedes and Redis partitioning were harder than my actual Meta loop. The rubric breakdown showed me exactly how to structure trade-offs.&quot;
+                  </p>
+                </div>
+                <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Priya S.</h4>
+                    <p className="text-xs text-slate-500">Senior Backend Engineer</p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800/40">
+                    Stripe Offer
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-7 rounded-3xl border border-slate-200/80 dark:border-white/5 bg-white dark:bg-surface-dark-card shadow-sm space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1 text-amber-500">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} className="w-4 h-4 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300 italic">
+                    &quot;Mockora&apos;s HR round with STAR method evaluation cured my habit of rambling during behavioral questions. The voice audio felt like speaking to an experienced engineering director.&quot;
+                  </p>
+                </div>
+                <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Alex M.</h4>
+                    <p className="text-xs text-slate-500">Full Stack Lead</p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                    Google L5 Offer
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-7 rounded-3xl border border-slate-200/80 dark:border-white/5 bg-white dark:bg-surface-dark-card shadow-sm space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1 text-amber-500">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} className="w-4 h-4 fill-current" />
+                    ))}
+                  </div>
+                  <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300 italic">
+                    &quot;Uploading my resume and having the AI probe projects I worked on 2 years ago was eye-opening. Best interview practice platform I&apos;ve used by a mile.&quot;
+                  </p>
+                </div>
+                <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Karthik R.</h4>
+                    <p className="text-xs text-slate-500">Staff Platform Engineer</p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800/40">
+                    Uber Offer
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ───────────────────────── PRICING TEASER ───────────────────────── */}
+        <section className="relative z-10 border-t border-slate-100 bg-slate-50/50 py-24 sm:py-28 dark:border-white/5 dark:bg-surface-dark-card/20">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+            <div className="mx-auto max-w-2xl text-center space-y-3">
+              <span className="text-xs font-extrabold uppercase tracking-widest text-brand-600 dark:text-brand-400">
+                Transparent Plans
+              </span>
+              <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
+                Start Practicing Free. Scale When Ready.
+              </h2>
+              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
+                No surprises. Practice essential technical tracks free, or unlock unlimited voice audio sessions with Pro.
+              </p>
+            </div>
+
+            <div className="mt-12 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-8 rounded-3xl border border-slate-200/80 bg-white dark:bg-surface-dark-card dark:border-white/5 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Free Starter</h3>
+                  <p className="text-xs text-slate-500 mt-1">Perfect for trying out adaptive AI mock interviews.</p>
+                  <p className="text-3xl font-black text-slate-900 dark:text-white mt-4">₹0</p>
+                </div>
+                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> 3 Technical mock rounds / month</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Standard feedback scorecard</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Resume PDF tech stack extraction</li>
+                </ul>
+                <Link to="/signup">
+                  <Button variant="outline" className="w-full rounded-xl text-xs font-bold py-2.5">
+                    Start Free
+                  </Button>
+                </Link>
+              </div>
+
+              <div className="p-8 rounded-3xl border-2 border-brand-500 bg-white dark:bg-surface-dark-card shadow-xl shadow-brand-500/10 space-y-6 relative">
+                <div className="absolute -top-3.5 right-6 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-brand-600 text-white shadow-md">
+                  Most Popular
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Pro Candidate</h3>
+                  <p className="text-xs text-slate-500 mt-1">Full technical, system design, and behavioral loops.</p>
+                  <p className="text-3xl font-black text-slate-900 dark:text-white mt-4">
+                    ₹599 <span className="text-xs text-slate-400 font-normal">/ mo (annual)</span>
+                  </p>
+                </div>
+                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Unlimited Technical & Behavioral HR rounds</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Ultra-fast Voice AI speech interviewer</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Executive PDF evaluations & FAANG benchmarks</li>
+                </ul>
+                <Link to="/pricing">
+                  <Button variant="primary" className="w-full rounded-xl text-xs font-bold py-2.5 flex items-center justify-center gap-1.5 shadow-md">
+                    Explore All Pricing & Plans <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ───────────────────────── BOTTOM CTA ───────────────────────── */}
         <section className="relative z-10 py-20 sm:py-24">
           <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
@@ -707,41 +856,72 @@ export const LandingPage: React.FC = () => {
         </section>
       </main>
 
-      {/* ───────────────────────── FOOTER ───────────────────────── */}
-      <footer className="relative z-20 border-t border-slate-200/80 bg-white/70 backdrop-blur-sm dark:border-white/5 dark:bg-surface-dark-card/60">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-5 py-6 sm:flex-row sm:px-8 lg:px-10">
+      {/* ───────────────────────── MODERN SAAS FOOTER ───────────────────────── */}
+      <footer className="relative z-20 border-t border-slate-200/80 bg-white/90 backdrop-blur-md dark:border-white/5 dark:bg-surface-dark-card/90">
+        <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10 py-16">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-10">
+            {/* Col 1 & 2: Brand & Mission */}
+            <div className="md:col-span-2 space-y-4">
+              <Logo size="md" showText={true} />
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-sm leading-relaxed">
+                Mockora is the AI-native mock interview platform simulating FAANG &amp; Tier-1 hiring loops with real-time adaptive questioning, voice audio, and deep competency scorecards.
+              </p>
+              <div className="pt-2 flex items-center gap-2">
+                <Link
+                  to="/maintenance"
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 transition-colors"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  All Systems Operational
+                </Link>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <Logo size="xs" showText={true} />
+            {/* Col 3: Product */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Product
+              </h4>
+              <ul className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
+                <li><Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Technical Tracks</Link></li>
+                <li><Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Behavioral &amp; HR Round</Link></li>
+                <li><Link to="/pricing" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Pricing &amp; Plans</Link></li>
+                <li><Link to="/leaderboard" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Global Leaderboard</Link></li>
+                <li><Link to="/resume/upload" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">ATS Resume Scanner</Link></li>
+              </ul>
+            </div>
 
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              © {new Date().getFullYear()} Mockora.ai. All rights reserved.
-            </span>
+            {/* Col 4: Platform & Resources */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Resources
+              </h4>
+              <ul className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
+                <li><Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">System Design Playbook</Link></li>
+                <li><Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">STAR Framework Guide</Link></li>
+                <li><Link to="/maintenance" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Platform Status</Link></li>
+                <li><a href="mailto:support@mockora.ai" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Support Desk</a></li>
+              </ul>
+            </div>
+
+            {/* Col 5: Legal & Trust */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Legal &amp; Trust
+              </h4>
+              <ul className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
+                <li><Link to="/privacy" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Privacy Policy</Link></li>
+                <li><Link to="/terms" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Terms of Service</Link></li>
+                <li><button type="button" onClick={openPreferencesModal} className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors text-left">Cookie Preferences</button></li>
+                <li><span className="text-slate-400 dark:text-slate-600">GDPR &amp; CCPA Ready</span></li>
+              </ul>
+            </div>
           </div>
 
-          <div className="flex items-center gap-6 text-xs text-slate-500 dark:text-slate-400">
-            <Link
-              to="/roles"
-              className="transition-colors hover:text-brand-600 dark:hover:text-brand-400"
-            >
-              Tracks
-            </Link>
-
-            <Link
-              to="/login"
-              className="transition-colors hover:text-brand-600 dark:hover:text-brand-400"
-            >
-              Sign In
-            </Link>
-
-            <Link
-              to="/signup"
-              className="transition-colors hover:text-brand-600 dark:hover:text-brand-400"
-            >
-              Get Started
-            </Link>
+          <div className="mt-12 pt-8 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 dark:text-slate-500">
+            <p>© {new Date().getFullYear()} Mockora.ai. All rights reserved.</p>
+            <p>Built with enterprise security, zero model-training retention, and adaptive AI intelligence.</p>
           </div>
-
         </div>
       </footer>
     </div>

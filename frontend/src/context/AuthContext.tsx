@@ -19,6 +19,39 @@ interface AuthContextType {
   setActiveResume: (resume: Resume) => void;
 }
 
+interface TokenPayload {
+  user_id?: number;
+  email?: string;
+  name?: string;
+  username?: string;
+  exp?: number;
+}
+
+const isTokenPayload = (value: unknown): value is TokenPayload =>
+  typeof value === 'object' && value !== null;
+
+const decodeTokenPayload = (token: string): TokenPayload => {
+  const [, encodedPayload] = token.split('.');
+  if (!encodedPayload) {
+    throw new Error('Invalid access token format');
+  }
+
+  const base64 = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+  const jsonPayload = decodeURIComponent(
+    atob(base64)
+      .split('')
+      .map((character) => `%${('00' + character.charCodeAt(0).toString(16)).slice(-2)}`)
+      .join('')
+  );
+  const payload: unknown = JSON.parse(jsonPayload);
+
+  if (!isTokenPayload(payload)) {
+    throw new Error('Invalid access token payload');
+  }
+
+  return payload;
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -28,49 +61,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Attempt to hydrate session from token on mount
-    const token = getAccessToken();
-    if (token) {
-      try {
-        // Decode payload manually to avoid new dependencies
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(
-          atob(base64)
-            .split('')
-            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-            .join('')
-        );
-        const payload = JSON.parse(jsonPayload);
-        
-        // eslint-disable-next-line react/purity -- Date.now() called inside useEffect, not during render
-        if (payload.exp && payload.exp < Date.now() / 1000) {
-          console.warn('Token expired');
-          clearAccessToken();
-          // eslint-disable-next-line react/set-state-in-effect -- syncing auth state from expired token (external check)
-          setUser(null);
-        } else {
-            const nextUser = {
+    const initAuth = async () => {
+      // Attempt to hydrate session from token on mount
+      const token = getAccessToken();
+      if (token) {
+        try {
+          const payload = decodeTokenPayload(token);
+          if (payload.exp && payload.exp < Date.now() / 1000) {
+            clearAccessToken();
+            setUser(null);
+          } else if (payload.user_id && payload.email) {
+            setUser({
               user_id: payload.user_id,
               id: String(payload.user_id),
-              name: payload.name || payload.email?.split('@')[0] || 'Candidate',
+              name: payload.name || payload.email.split('@')[0] || 'Candidate',
               email: payload.email,
-              username: payload.username || payload.email?.split('@')[0] || 'Candidate',
-            };
-            console.log("AUTH USER (from token payload):", { payload, nextUser });
-            setUser(nextUser);
+              username: payload.username || payload.email.split('@')[0] || 'Candidate',
+            });
+            setIsLoading(false);
+            return;
           }
-
-      } catch (e) {
-        console.error('Invalid token payload', e);
-        clearAccessToken();
+        } catch {
+          clearAccessToken();
+        }
       }
-    }
-    setIsLoading(false);
+
+      // If no valid localStorage token, attempt to hydrate via httpOnly cookie /auth/me
+      try {
+        const me = await apiService.getMe();
+        if (me && me.user_id) {
+          setUser({
+            user_id: me.user_id,
+            id: String(me.user_id),
+            name: me.name || me.email.split('@')[0] || 'Candidate',
+            email: me.email,
+            username: me.username || me.email.split('@')[0] || 'Candidate',
+          });
+        }
+      } catch {
+        // Not logged in
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
   }, []);
 
   useEffect(() => {
-    const handleAuthInvalidated = () => setUser(null);
+    const handleAuthInvalidated = () => {
+      setUser(null);
+      setActiveResume(null);
+    };
     window.addEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
     return () => window.removeEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
   }, []);
@@ -93,8 +135,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    apiService.logout().catch(() => {});
     clearAccessToken();
     setUser(null);
+    setActiveResume(null);
   };
 
   const updateUserTargetRole = (targetRole: UserRoleTarget) => {

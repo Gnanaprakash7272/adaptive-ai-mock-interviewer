@@ -120,12 +120,12 @@ def test_2_empty_upload():
 # ---------------------------------------------------------------------------
 
 def test_3_non_pdf_mime_type():
-    """Verify that non-application/pdf content types return HTTP 400 with code INVALID_FILE_TYPE."""
+    """Verify that unsupported content types return HTTP 400 with code INVALID_FILE_TYPE."""
     headers = get_auth_headers()
     response = client.post(
         "/resume/analyze",
         headers=headers,
-        files={"file": ("document.docx", b"%PDF-dummy", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        files={"file": ("document.txt", b"plain text resume", "text/plain")},
     )
 
     assert response.status_code == 400

@@ -22,12 +22,22 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const addToast = (type: ToastType, title: string, message?: string) => {
-    // eslint-disable-next-line react/purity -- Date.now/Math.random called inside callback, not during render
-    const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
-    setToasts((prev) => [...prev, { id, type, title, message }]);
-    setTimeout(() => {
-      removeToast(id);
-    }, 4500);
+    // Deduplicate: avoid spamming identical messages if triggered simultaneously
+    setToasts((prev) => {
+      const isDuplicate = prev.some(
+        (t) => t.type === type && t.title === title && t.message === message
+      );
+      if (isDuplicate) return prev;
+
+      // eslint-disable-next-line react/purity -- Date.now/Math.random called inside callback, not during render
+      const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const duration = type === 'error' ? 6500 : 4500;
+      setTimeout(() => {
+        removeToast(id);
+      }, duration);
+
+      return [...prev, { id, type, title, message }];
+    });
   };
 
   const removeToast = (id: string) => {

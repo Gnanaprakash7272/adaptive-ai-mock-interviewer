@@ -18,7 +18,12 @@ missing_concepts  : Python list  → text column   (JSON-serialised to string; s
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+try:
+    from datetime import UTC
+except ImportError:
+    UTC = timezone.utc
 from typing import Any
 
 from api.db import supabase
@@ -32,6 +37,28 @@ def _single(result) -> dict[str, Any]:
     if not result.data:
         raise RuntimeError("Supabase returned no rows for the operation.")
     return result.data[0]
+
+
+def get_leaderboard(limit: int = 1000) -> list[dict[str, Any]]:
+    """Return the public leaderboard ordered by the composite score."""
+    if limit < 1 or limit > 1000:
+        raise ValueError("Leaderboard limit must be between 1 and 1000.")
+
+    try:
+        result = (
+            supabase.table("leaderboard_scores")
+            .select(
+                "user_id,name,interviews_completed,performance_score,"
+                "consistency_score,profile_score,leaderboard_score"
+            )
+            .order("leaderboard_score", desc=True)
+            .order("user_id")
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        raise RuntimeError(f"get_leaderboard failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

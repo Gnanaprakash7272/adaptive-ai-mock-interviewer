@@ -187,6 +187,22 @@ def health_check():
 # POST /resume/analyze
 # =============================================================================
 
+def extract_docx_text(docx_bytes: bytes) -> str:
+    import zipfile, xml.etree.ElementTree as ET, io
+    try:
+        with zipfile.ZipFile(io.BytesIO(docx_bytes)) as z:
+            xml_content = z.read("word/document.xml")
+            root = ET.fromstring(xml_content)
+            texts = []
+            for p in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+                p_text = "".join(p.itertext()).strip()
+                if p_text:
+                    texts.append(p_text)
+            return "\n".join(texts)
+    except Exception as exc:
+        raise ValueError(f"Could not extract text from Word document: {exc}")
+
+
 @app.post("/resume/analyze")
 @limiter.limit("10/minute")
 async def analyze_resume_endpoint(
@@ -194,9 +210,15 @@ async def analyze_resume_endpoint(
     file: UploadFile = File(...),
     current_user: UserInfo = Depends(get_current_user)
 ):
-    # 1. Content-Type check
-    if file.content_type != "application/pdf":
-        raise InvalidFileTypeError("Only PDF resumes are supported.")
+    # 1. Content-Type and extension check (supports PDF and DOCX)
+    fname = (file.filename or "").lower()
+    is_docx = fname.endswith(".docx") or file.content_type in [
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword"
+    ]
+    is_pdf = fname.endswith(".pdf") or file.content_type == "application/pdf"
+    if not (is_pdf or is_docx):
+        raise InvalidFileTypeError("Only PDF and Word (.docx) resumes are supported.")
 
     # 2. Chunked read to protect memory & enforce size limit (10 MB)
     chunk_size = 64 * 1024  # 64 KB chunks
@@ -218,19 +240,24 @@ async def analyze_resume_endpoint(
     if len(pdf_bytes) == 0:
         raise EmptyFileError("Uploaded file is empty.")
 
-    # 4. Check magic bytes (%PDF-)
-    if not pdf_bytes.startswith(b"%PDF-"):
-        raise InvalidPDFError("File does not appear to be a valid PDF document.", status_code=400)
-
-    # 5. Extract text via PyMuPDF
-    try:
-        raw_text = extract_text(pdf_bytes)
-    except ValueError as exc:
-        logger.warning("PDF extraction failed: %s", exc)
-        raise InvalidPDFError("The uploaded PDF could not be read.", status_code=422)
-    except Exception as exc:
-        logger.warning("Unexpected error during PDF extraction: %s", exc)
-        raise InvalidPDFError("The uploaded PDF could not be read.", status_code=422)
+    # 4. Extract text depending on file format
+    if is_docx:
+        try:
+            raw_text = extract_docx_text(pdf_bytes)
+        except Exception as exc:
+            logger.warning("DOCX extraction failed: %s", exc)
+            raise InvalidPDFError("The uploaded Word document could not be read.", status_code=422)
+    else:
+        if not pdf_bytes.startswith(b"%PDF-"):
+            raise InvalidPDFError("File does not appear to be a valid PDF document.", status_code=400)
+        try:
+            raw_text = extract_text(pdf_bytes)
+        except ValueError as exc:
+            logger.warning("PDF extraction failed: %s", exc)
+            raise InvalidPDFError("The uploaded PDF could not be read.", status_code=422)
+        except Exception as exc:
+            logger.warning("Unexpected error during PDF extraction: %s", exc)
+            raise InvalidPDFError("The uploaded PDF could not be read.", status_code=422)
 
     if not raw_text or not raw_text.strip():
         raise EmptyResumeError("No readable text could be extracted from this resume.")
@@ -244,6 +271,18 @@ async def analyze_resume_endpoint(
 
     if not cleaned_text or not cleaned_text.strip():
         raise EmptyResumeError("No readable text could be extracted from this resume.")
+
+    # Pre-extract real email, phone, links before PII stripping
+    import re
+    email_match = re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", cleaned_text)
+    phone_match = re.search(r"(\+?\d{1,3}[\s\-]?)?(\d{10}|\d{5}[\s\-]\d{5}|\d{4}[\s\-]\d{3}[\s\-]\d{3})", cleaned_text)
+    linkedin_match = re.search(r"(?:https?://)?(?:www\.)?linkedin\.com/in/([a-zA-Z0-9_-]+)", cleaned_text)
+    github_match = re.search(r"(?:https?://)?(?:www\.)?github\.com/([a-zA-Z0-9_-]+)", cleaned_text)
+
+    actual_email = email_match.group(0) if email_match else ""
+    actual_phone = phone_match.group(0) if phone_match else ""
+    actual_linkedin = linkedin_match.group(0) if linkedin_match else ""
+    actual_github = github_match.group(0) if github_match else ""
 
     # 7. Strip PII (email, phone) before sending to Gemini
     gemini_text = strip_pii(cleaned_text)
@@ -267,6 +306,18 @@ async def analyze_resume_endpoint(
     except Exception as exc:
         logger.exception("Unexpected error during resume analysis: %s", exc)
         raise AIServiceUnavailableError("The AI service is temporarily unavailable. Please try again.")
+
+    # Restore accurate contact information
+    if not isinstance(candidate_profile.get("candidate"), dict):
+        candidate_profile["candidate"] = {}
+    if actual_email and (not candidate_profile["candidate"].get("email") or "[EMAIL]" in candidate_profile["candidate"]["email"]):
+        candidate_profile["candidate"]["email"] = actual_email
+    if actual_phone and (not candidate_profile["candidate"].get("phone") or "[PHONE]" in candidate_profile["candidate"]["phone"]):
+        candidate_profile["candidate"]["phone"] = actual_phone
+    if actual_linkedin and not candidate_profile["candidate"].get("linkedin"):
+        candidate_profile["candidate"]["linkedin"] = actual_linkedin
+    if actual_github and not candidate_profile["candidate"].get("github"):
+        candidate_profile["candidate"]["github"] = actual_github
 
     # 8. Persist candidate profile
     try:

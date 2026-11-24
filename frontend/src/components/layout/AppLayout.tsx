@@ -13,7 +13,11 @@ export const AppLayout: React.FC = () => {
     location.pathname === '/' ||
     location.pathname === '/login' ||
     location.pathname === '/signup' ||
-    location.pathname === '/forgot-password';
+    location.pathname === '/forgot-password' ||
+    location.pathname === '/maintenance' ||
+    location.pathname === '/privacy' ||
+    location.pathname === '/terms' ||
+    location.pathname === '/pricing';
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-light dark:bg-surface-dark transition-colors duration-200">

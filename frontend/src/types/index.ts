@@ -364,3 +364,13 @@ export interface HistoryItem {
   status: 'Completed' | 'In Progress' | 'Abandoned';
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  userId: number;
+  fullName: string;
+  score: number;
+  performanceScore: number;
+  consistencyScore: number;
+  profileScore: number;
+  interviewsCompleted: number;
+}

@@ -78,6 +78,7 @@ def _mock_client(side_effect=None, return_value=None):
 class TestCallGemini:
 
     def setup_method(self):
+        os.environ["AI_PROVIDER"] = "gemini"
         os.environ["GEMINI_API_KEY"] = "MOCK_KEY"
         gemini_config._client_cache.clear()
 
@@ -315,6 +316,51 @@ class TestCallGemini:
         gemini_config._client_cache.clear()
 
 
+class TestGroqProvider:
+
+    def test_groq_success_uses_openai_compatible_payload(self):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "choices": [{"message": {"content": '{"result": "ok"}'}}]
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "AI_PROVIDER": "groq",
+                "GROQ_API_KEY": "MOCK_GROQ_KEY",
+                "GROQ_MODEL": "mock-model",
+            },
+            clear=False,
+        ), patch("gemini_config.requests.post", return_value=response) as post:
+            result = gemini_config.call_gemini("sys", "user", operation="test_groq")
+
+        assert result == '{"result": "ok"}'
+        post.assert_called_once()
+        request = post.call_args.kwargs
+        assert request["json"]["model"] == "mock-model"
+        assert request["json"]["messages"] == [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "user"},
+        ]
+        assert request["json"]["response_format"] == {"type": "json_object"}
+
+    def test_groq_can_fall_back_to_gemini(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AI_PROVIDER": "groq",
+                "AI_PROVIDER_FALLBACK": "gemini",
+                "GROQ_API_KEY": "",
+                "GEMINI_API_KEY": "MOCK_KEY",
+            },
+            clear=False,
+        ), patch(
+            "gemini_config.genai.Client",
+            return_value=_mock_client(return_value=_fake_response('{"ok": true}')),
+        ):
+            assert gemini_config.call_gemini("sys", "user") == '{"ok": true}'
+
+
 # ---------------------------------------------------------------------------
 # call_gemini_json — JSON wrapper tests
 # ---------------------------------------------------------------------------
@@ -322,6 +368,7 @@ class TestCallGemini:
 class TestCallGeminiJson:
 
     def setup_method(self):
+        os.environ["AI_PROVIDER"] = "gemini"
         os.environ["GEMINI_API_KEY"] = "MOCK_KEY"
         gemini_config._client_cache.clear()
 

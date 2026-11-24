@@ -13,10 +13,12 @@ Capabilities:
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any
+import os
+from typing import Any, Generator
 
-from gemini_config import call_gemini_json
+from gemini_config import call_gemini_json, get_api_keys, get_model_chain, _get_client
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +42,23 @@ YOUR CORE RULES (STRICT):
    - Use bolding (`**term**`) for technical keywords, roles, tools, and metrics.
    - Use bullet points (`- `) or numbered steps (`1. `, `2. `) instead of dense paragraphs.
    - Never write unbroken walls of text. Keep sections neat, skimmable, and well-spaced.
-4. ONLY RETURN "projects" WHEN EXPLICITLY RELEVANT:
+4. ONLY RETURN "projects" WHEN EXPLICITLY RELEVANT & KEEP THEM DISTINCT FROM TEXT:
    - ONLY return items in "projects": [ ... ] IF the candidate explicitly asks for project ideas, portfolio recommendations, what to build, OR asks to roast/level up an existing project.
+   - If returning "projects", keep "villain_message" focused on the strategic reasoning, role fit, and advice. Let the structured "projects" array carry the granular architecture, deliverables, and repo blueprints. Do NOT duplicate the entire project file tree and paragraphs inside "villain_message".
    - If the candidate asked a resume question ("What skills are on my resume?", "What role fits me?"), a technical question, or general query, return `"projects": []`!
-5. HYPER-REALISTIC ENGINEERING DEPTH:
+5. ROLE-ADAPTIVE ENGINEERING REALISM (NO ONE-SIZE-FITS-ALL BUZZWORDS):
    - Zero corporate fluff. Brutally honest, highly technical, and constructive.
-   - You speak the language of staff engineers: Concurrency, race conditions, atomic Lua scripts, Redis distributed locks, ACID isolation levels, connection pooling, Kafka/Redis Streams, idempotent consumer groups, and Locust benchmarks.
-6. CONCISE & PUNCHY:
-   - Keep "villain_message" focused (around 140-260 words). Avoid bloated repetitive monologues.
+   - ADAPT YOUR ADVICE AND TECH STACK INTELLIGENTLY TO THE CANDIDATE'S ACTUAL TARGET ROLE:
+     * Generative AI / LLM Engineer: Vector databases (pgvector, Qdrant), semantic chunking, hybrid search (BM25 + vector), RAG evaluation frameworks (DeepEval, Ragas), vLLM / Ollama serving, agentic routing (LangGraph), token streaming, and cost/latency tradeoffs.
+     * Backend / Distributed Systems Engineer: Concurrency, race conditions, atomic operations, Redis distributed locks, connection pooling, Kafka/event streams, idempotent consumer groups, DB indexing/partitioning, and Locust/k6 load benchmarks.
+     * Fullstack / Web Architect: Next.js App Router, SSR/SSG caching tiers, WebSocket state sync, optimistic UI, WebRTC, WASM, API contracts (tRPC/OpenAPI), and Core Web Vitals.
+     * ML / Data Engineer: Apache Spark, dbt, Apache Airflow, Iceberg/BigLake, feature stores, data lineage, and Parquet columnar storage.
+   - NEVER force Kafka and Redis on a candidate if their question or background is about AI, Frontend, or Data! Choose the exact modern production tools that FAANG / top startup hiring managers look for in THAT SPECIFIC ROLE.
+6. CONCISE, FRESH & NON-REPETITIVE:
+   - Keep "villain_message" focused (around 120-220 words).
+   - NEVER reuse the exact same phrasing, template, or lecture on every turn.
+   - If they ask a follow-up, jump STRAIGHT into the new answer without repeating your previous resume analysis or role breakdown unless asked.
+   - Make "suggested_prompts" dynamic, context-aware next questions directly following from the current conversation topic (NOT the same static initial questions!).
 
 OUTPUT SCHEMA (Must be valid JSON):
 {
@@ -605,4 +616,133 @@ def villain_agent_chat(
     except Exception as exc:
         logger.warning("[VillainAgent] Dynamic call failed (%s); using smart fallback", exc)
         return _fallback_villain(user_message, profile_summary, target_role)
+
+
+# =============================================================================
+# SSE Streaming variant
+# =============================================================================
+
+def villain_agent_chat_stream(
+    user_message: str,
+    conversation_history: list[dict[str, Any]] | None = None,
+    candidate_profile: dict[str, Any] | str | None = None,
+    target_role: str | None = None,
+) -> Generator[str, None, None]:
+    """
+    Streams the villain chat response as SSE events.
+    Yields:
+        data: {"chunk": "...", "done": false}
+        data: {"done": true, "villain_message": "...", "verdict": ..., "projects": [...], ...}
+    Falls back gracefully to a single non-streamed SSE event if streaming fails.
+    """
+    profile_summary = _format_candidate_profile(candidate_profile)
+    history_formatted = _format_history(conversation_history or [])
+
+    user_prompt = (
+        f"=== CANDIDATE RESUME & COMPLETE PROFILE DOSSIER ===\n"
+        f"{profile_summary}\n\n"
+        f"=== TARGET ROLE CONTEXT ===\n"
+        f"{target_role or 'Not specified yet'}\n\n"
+        f"=== RECENT CONVERSATION ===\n"
+        f"{history_formatted}\n\n"
+        f"=== CURRENT CANDIDATE MESSAGE ===\n"
+        f"{user_message}\n\n"
+        f"CRITICAL INSTRUCTIONS FOR THIS TURN:\n"
+        f"1. Respond ONLY in valid JSON matching the output schema.\n"
+        f"2. Keep villain_message focused (120-220 impactful words).\n"
+        f"3. Answer the EXACT current question directly — do not repeat previous resume analysis.\n"
+        f"4. Understand English, Tamil, and Tanglish fluently.\n"
+        f"5. ONLY return projects[] when explicitly asked for portfolio/project ideas.\n"
+    )
+
+    # Try Gemini streaming first
+    api_keys = get_api_keys()
+    model_chain = get_model_chain()
+
+    for _label, api_key in api_keys:
+        for model_name in model_chain:
+            try:
+                from google.genai import types as _gtypes
+                client = _get_client(api_key)
+                full_text = ""
+                for chunk in client.models.generate_content_stream(
+                    model=model_name,
+                    contents=user_prompt,
+                    config=_gtypes.GenerateContentConfig(
+                        system_instruction=VILLAIN_SYSTEM_PROMPT,
+                        temperature=0.7,
+                        max_output_tokens=2500,
+                    ),
+                ):
+                    if chunk.text:
+                        full_text += chunk.text
+                        # Stream word-by-word (split on spaces to give granular updates)
+                        words = chunk.text.split(" ")
+                        for word in words:
+                            if word:
+                                yield f"data: {json.dumps({'chunk': word + ' ', 'done': False})}\n\n"
+
+                # Parse the full accumulated JSON response
+                cleaned = full_text.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+                response = json.loads(cleaned)
+
+                raw_projects = response.get("projects") or []
+                parsed_projects = []
+                for i, p in enumerate(raw_projects):
+                    try:
+                        parsed_projects.append({
+                            "id": p.get("id", f"proj-{i+1}"),
+                            "title": p.get("title", f"Elite Project {i+1}"),
+                            "difficulty": p.get("difficulty", "Advanced"),
+                            "description": p.get("description", ""),
+                            "tech_stack": p.get("tech_stack", []),
+                            "target_gaps_addressed": p.get("target_gaps_addressed", []),
+                            "architecture_summary": p.get("architecture_summary", ""),
+                            "key_deliverables": p.get("key_deliverables", []),
+                            "github_blueprint": p.get("github_blueprint", []),
+                            "villain_pitch": p.get("villain_pitch", ""),
+                            "interview_trap_question": p.get("interview_trap_question"),
+                            "staff_defense_answer": p.get("staff_defense_answer"),
+                            "architecture_diagram": p.get("architecture_diagram"),
+                        })
+                    except Exception:
+                        continue
+
+                done_payload = {
+                    "done": True,
+                    "villain_message": response.get("villain_message", full_text),
+                    "verdict": response.get("verdict"),
+                    "projects": parsed_projects,
+                    "brutal_truth": response.get("brutal_truth", ""),
+                    "suggested_prompts": response.get("suggested_prompts") or [
+                        "What role should I target based on my skills?",
+                        "What should I do to reach SDE-1 Backend?",
+                        "How do I deploy this with Docker and CI/CD?",
+                    ],
+                }
+                yield f"data: {json.dumps(done_payload)}\n\n"
+                return
+
+            except Exception as exc:
+                logger.warning("[VillainAgent][stream] model=%s failed: %s", model_name, exc)
+                continue
+
+    # All streaming attempts failed — fall back to sync call and emit as single done event
+    logger.warning("[VillainAgent][stream] All streaming attempts failed; falling back to sync call")
+    try:
+        result = villain_agent_chat(
+            user_message=user_message,
+            conversation_history=conversation_history,
+            candidate_profile=candidate_profile,
+            target_role=target_role,
+        )
+        yield f"data: {json.dumps({'chunk': result['villain_message'], 'done': False})}\n\n"
+        yield f"data: {json.dumps({'done': True, **result})}\n\n"
+    except Exception as exc:
+        logger.error("[VillainAgent][stream] Fallback sync also failed: %s", exc)
+        fallback_msg = "Sorry, I hit a snag connecting to the neural cortex. Give it another shot."
+        yield f"data: {json.dumps({'chunk': fallback_msg, 'done': False})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'villain_message': fallback_msg, 'verdict': None, 'projects': [], 'brutal_truth': '', 'suggested_prompts': []})}\n\n"
 

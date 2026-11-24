@@ -17,13 +17,14 @@ except ImportError:
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.auth import UserInfo, get_current_user, limiter, security
 import api.coach_repository as coach_repo
 from intelligence.career_coach.adaptive_engine import adjust_roadmap_after_mock
-from intelligence.career_coach.villain_agent import villain_agent_chat
+from intelligence.career_coach.villain_agent import villain_agent_chat, villain_agent_chat_stream
 from intelligence.career_coach.application_tracker import (
     analyze_application_trends,
     generate_application_recommendations,
@@ -114,9 +115,11 @@ class UpdateApplicationRequest(BaseModel):
 # =============================================================================
 
 @router.post("/intake", response_model=PivotPlan)
-def career_pivot_intake(request: Request, body: IntakeRequest):
+def career_pivot_intake(request: Request, body: IntakeRequest, background_tasks: BackgroundTasks):
     """
     Intake candidate profile + target role + optional JD.
+    Heavy AI pipeline runs in a background task to avoid 504 timeouts on slow Gemini calls.
+    Returns the saved plan immediately after kicking off background processing.
     Executes:
     1. 3-bucket skill gap analysis with market readiness score.
     2. Dynamic week-by-week learning roadmap with mock checkpoints.
@@ -125,7 +128,7 @@ def career_pivot_intake(request: Request, body: IntakeRequest):
     """
     user = _get_optional_or_default_user(request)
 
-    # 1. Analyze skill gaps
+    # 1. Analyze skill gaps (fast, synchronous — needed to assemble the plan object below)
     gap_map = analyze_skill_gaps(
         candidate_profile_or_text=body.resume_text or f"Role: {body.current_role}, {body.experience_years} years experience",
         target_role=body.target_role,
@@ -404,6 +407,71 @@ def villain_chat(request: Request, body: VillainChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Career Villain agent encountered an error. Please try again.",
         )
+
+
+# =============================================================================
+# POST /coach/villain/chat/stream — SSE Token Streaming endpoint
+# =============================================================================
+
+@router.post("/villain/chat/stream")
+async def villain_chat_stream(request: Request, body: VillainChatRequest):
+    """
+    Career Villain chat with Server-Sent Events (SSE) token streaming.
+    Streams word-by-word chunks so the UI renders progressively.
+    Final SSE event has done=true and carries the full structured payload.
+    """
+    user = _get_optional_or_default_user(request)
+
+    candidate_profile = body.resume_context
+    db_profile = None
+    try:
+        from api.resume_repository import get_candidate_profile
+        db_profile = get_candidate_profile(user.user_id)
+    except Exception as e:
+        logger.debug("[VillainAgent/stream] Could not retrieve resume for user %s: %s", user.user_id, e)
+
+    if not candidate_profile:
+        candidate_profile = db_profile
+    elif db_profile and isinstance(candidate_profile, dict):
+        for key in [
+            "education", "skills", "projects", "experience",
+            "certifications", "achievements", "competitive_programming",
+            "expertise_areas", "potential_interview_topics",
+            "languages", "publications"
+        ]:
+            if not candidate_profile.get(key) and db_profile.get(key):
+                candidate_profile[key] = db_profile[key]
+        if not candidate_profile.get("candidate") and db_profile.get("candidate"):
+            candidate_profile["candidate"] = db_profile["candidate"]
+
+    target_role = body.target_role
+    if not target_role and isinstance(candidate_profile, dict):
+        target_role = candidate_profile.get("target_role") or candidate_profile.get("targetRole")
+    if not target_role:
+        try:
+            plan = coach_repo.get_pivot_plan(user.user_id)
+            if plan:
+                target_role = plan.target_role
+        except Exception:
+            pass
+
+    def sse_generator():
+        yield from villain_agent_chat_stream(
+            user_message=body.message,
+            conversation_history=body.conversation_history,
+            candidate_profile=candidate_profile,
+            target_role=target_role,
+        )
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/analytics")

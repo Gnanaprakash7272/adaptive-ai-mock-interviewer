@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { PageWrapper } from '../components/layout/PageWrapper';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -12,16 +12,20 @@ import {
   User,
   ShieldCheck,
   CheckCircle2,
+  Cookie,
+  ExternalLink,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useCookie } from '../context/CookieContext';
 import { getApiBaseUrl } from '../services/apiService';
 
 export const SettingsPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { addToast } = useToast();
+  const { openPreferencesModal } = useCookie();
   const navigate = useNavigate();
 
   const [apiBaseUrl, setApiBaseUrl] = useState(getApiBaseUrl());
@@ -171,6 +175,45 @@ export const SettingsPage: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* Privacy & Cookie Preferences Card */}
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-brand-500" />
+            Privacy & Cookie Preferences
+          </h3>
+          <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+            Compliant
+          </span>
+        </div>
+        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+          Manage how Mockora processes candidate telemetry, handles audio buffers, and anonymizes resume PII.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openPreferencesModal}
+            className="rounded-xl flex items-center gap-1.5 text-xs"
+          >
+            <Cookie className="w-3.5 h-3.5 text-brand-500" />
+            Manage Cookie Preferences
+          </Button>
+          <Link to="/privacy">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="rounded-xl flex items-center gap-1.5 text-xs border border-slate-200 dark:border-white/10"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Privacy Policy
+            </Button>
+          </Link>
+        </div>
+      </Card>
 
       {/* SAVE BUTTON */}
       <Button onClick={handleSaveSettings} size="lg" className="shadow-lg">

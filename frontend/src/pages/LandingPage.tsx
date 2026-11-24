@@ -18,7 +18,6 @@ import {
   Terminal,
   Sparkles,
   Star,
-  Check,
 } from 'lucide-react';
 
 import { Button } from '../components/common/Button';
@@ -742,66 +741,6 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        {/* ───────────────────────── PRICING TEASER ───────────────────────── */}
-        <section className="relative z-10 border-t border-slate-100 bg-slate-50/50 py-24 sm:py-28 dark:border-white/5 dark:bg-surface-dark-card/20">
-          <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
-            <div className="mx-auto max-w-2xl text-center space-y-3">
-              <span className="text-xs font-extrabold uppercase tracking-widest text-brand-600 dark:text-brand-400">
-                Transparent Plans
-              </span>
-              <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
-                Start Practicing Free. Scale When Ready.
-              </h2>
-              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">
-                No surprises. Practice essential technical tracks free, or unlock unlimited voice audio sessions with Pro.
-              </p>
-            </div>
-
-            <div className="mt-12 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-8 rounded-3xl border border-slate-200/80 bg-white dark:bg-surface-dark-card dark:border-white/5 shadow-sm space-y-6">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Free Starter</h3>
-                  <p className="text-xs text-slate-500 mt-1">Perfect for trying out adaptive AI mock interviews.</p>
-                  <p className="text-3xl font-black text-slate-900 dark:text-white mt-4">₹0</p>
-                </div>
-                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> 3 Technical mock rounds / month</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Standard feedback scorecard</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Resume PDF tech stack extraction</li>
-                </ul>
-                <Link to="/signup">
-                  <Button variant="outline" className="w-full rounded-xl text-xs font-bold py-2.5">
-                    Start Free
-                  </Button>
-                </Link>
-              </div>
-
-              <div className="p-8 rounded-3xl border-2 border-brand-500 bg-white dark:bg-surface-dark-card shadow-xl shadow-brand-500/10 space-y-6 relative">
-                <div className="absolute -top-3.5 right-6 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-brand-600 text-white shadow-md">
-                  Most Popular
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Pro Candidate</h3>
-                  <p className="text-xs text-slate-500 mt-1">Full technical, system design, and behavioral loops.</p>
-                  <p className="text-3xl font-black text-slate-900 dark:text-white mt-4">
-                    ₹599 <span className="text-xs text-slate-400 font-normal">/ mo (annual)</span>
-                  </p>
-                </div>
-                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Unlimited Technical & Behavioral HR rounds</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Ultra-fast Voice AI speech interviewer</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Executive PDF evaluations & FAANG benchmarks</li>
-                </ul>
-                <Link to="/pricing">
-                  <Button variant="primary" className="w-full rounded-xl text-xs font-bold py-2.5 flex items-center justify-center gap-1.5 shadow-md">
-                    Explore All Pricing & Plans <ArrowRight className="w-3.5 h-3.5" />
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* ───────────────────────── BOTTOM CTA ───────────────────────── */}
         <section className="relative z-10 py-20 sm:py-24">
           <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
@@ -885,7 +824,7 @@ export const LandingPage: React.FC = () => {
               <ul className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
                 <li><Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Technical Tracks</Link></li>
                 <li><Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Behavioral &amp; HR Round</Link></li>
-                <li><Link to="/pricing" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Pricing &amp; Plans</Link></li>
+                <li><Link to="/resume/build" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">1-Page Resume Builder</Link></li>
                 <li><Link to="/leaderboard" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Global Leaderboard</Link></li>
                 <li><Link to="/resume/upload" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">ATS Resume Scanner</Link></li>
               </ul>

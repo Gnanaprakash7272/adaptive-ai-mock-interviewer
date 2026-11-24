@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck, Sparkles, Settings, FolderGit2 } from 'lucide-react';
+import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck, Settings, FolderGit2 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -28,9 +28,6 @@ export const Navbar: React.FC = () => {
             <nav className="hidden md:flex items-center gap-5 text-xs font-semibold text-slate-600 dark:text-slate-300">
               <Link to="/roles" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
                 Interview Tracks
-              </Link>
-              <Link to="/pricing" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
-                Pricing & Plans
               </Link>
               <Link to="/leaderboard" className="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
                 Leaderboard
@@ -137,20 +134,6 @@ export const Navbar: React.FC = () => {
                     >
                       <History className="w-4 h-4 text-amber-500" />
                       Past History
-                    </Link>
-
-                    <Link
-                      to="/pricing"
-                      onClick={() => setShowProfileMenu(false)}
-                      className="flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 rounded-xl transition-colors"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <Sparkles className="w-4 h-4 text-brand-500" />
-                        Pricing & Plans
-                      </span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800/40">
-                        Pro
-                      </span>
                     </Link>
 
                     <Link

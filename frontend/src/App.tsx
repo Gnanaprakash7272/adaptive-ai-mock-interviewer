@@ -28,7 +28,6 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => 
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then((module) => ({ default: module.MaintenancePage })));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage').then((module) => ({ default: module.PrivacyPolicyPage })));
-const PricingPage = lazy(() => import('./pages/PricingPage').then((module) => ({ default: module.PricingPage })));
 const TermsPage = lazy(() => import('./pages/TermsPage').then((module) => ({ default: module.TermsPage })));
 const CareerCoachPage = lazy(() => import('./pages/CareerCoachPage').then((module) => ({ default: module.CareerCoachPage })));
 const ResumeBuilderPage = lazy(() => import('./pages/ResumeBuilderPage').then((module) => ({ default: module.ResumeBuilderPage })));
@@ -84,7 +83,7 @@ export const App: React.FC = () => {
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
                     <Route path="/maintenance" element={<MaintenancePage />} />
                     <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                    <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/pricing" element={<Navigate to="/" replace />} />
                     <Route path="/terms" element={<TermsPage />} />
                     
                     {/* Protected Routes */}

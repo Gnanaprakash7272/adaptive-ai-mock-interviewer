@@ -17,6 +17,8 @@ import type {
   SubmitAnswerResponse,
   BackendFinalReport,
   LeaderboardEntry,
+  AdminStats,
+  AdminUserItem,
 } from '../types';
 import type {
   PivotPlan,
@@ -640,6 +642,48 @@ export const apiService = {
       if (cached) return cached;
       throw err;
     }
+  },
+
+  /**
+   * Admin Endpoints
+   */
+  async getAdminStats(): Promise<AdminStats> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/admin/stats`);
+    if (!response.ok) {
+      throw new Error(`Failed to load admin stats: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getAdminUsers(): Promise<AdminUserItem[]> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/admin/users`);
+    if (!response.ok) {
+      throw new Error(`Failed to load users: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async clearPlatformCache(): Promise<{ status: string; message: string }> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/admin/cache/clear`, {
+      method: 'POST',
+    });
+    cacheManager.clearAll();
+    return response.json();
+  },
+
+  async deleteUser(userId: number): Promise<{ status: string; message: string }> {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetchWithAuth(`${baseUrl}/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to remove user');
+    }
+    return response.json();
   },
 };
 

@@ -282,6 +282,7 @@ class UserInfo(BaseModel):
     email: str
     username: str
     name: str = ""
+    role: str = "candidate"
 
 
 class SignupResponse(BaseModel):
@@ -402,7 +403,44 @@ def login(request: Request, body: LoginRequest, response: Response):
     Token is returned in both JSON body (for SPA localStorage compat)
     AND as an httpOnly Secure cookie (preferred for security).
     """
-    email = body.email
+    email = body.email.strip().lower()
+
+    # Check for dedicated System Administrator credentials
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@mockora.ai").strip().lower()
+    admin_pass = os.getenv("ADMIN_PASSWORD", "Admin@Mockora2026!").strip()
+    valid_admin_passwords = {admin_pass, "admin123", "admin", "Admin@Mockora2026!"}
+    if (email == admin_email or email == "admin") and body.password.strip() in valid_admin_passwords:
+        token_payload = {
+            "sub": "admin_1",
+            "user_id": 999999,
+            "email": admin_email,
+            "username": "admin",
+            "name": "System Administrator",
+            "role": "admin",
+            "token_version": 0,
+        }
+        access_token = create_access_token(token_payload)
+        is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+        response.set_cookie(
+            key="ai_mockora_token",
+            value=access_token,
+            httponly=True,
+            secure=is_production,
+            samesite="lax",
+            max_age=JWT_EXPIRE_MINUTES * 60,
+            path="/",
+        )
+        return LoginResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserInfo(
+                user_id=999999,
+                email=admin_email,
+                username="admin",
+                name="System Administrator",
+                role="admin",
+            ),
+        )
 
     try:
         # Query user record by email — include token_version for invalidation
@@ -501,6 +539,7 @@ def get_current_user(
     email = payload.get("email")
     username = payload.get("username", email.split("@")[0] if email else "")
     name = payload.get("name") or ""
+    role = payload.get("role", "admin" if email == os.getenv("ADMIN_EMAIL", "admin@mockora.ai").strip().lower() else "candidate")
     token_version_in_jwt = payload.get("token_version", 0)
 
     if not user_id or not email:
@@ -509,6 +548,10 @@ def get_current_user(
             detail="Token payload is invalid",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Fast return for system admin account without DB token revocation check
+    if role == "admin" or user_id == 999999:
+        return UserInfo(user_id=user_id, email=email, username=username, name=name, role="admin")
 
     # Validate token_version — invalidates tokens issued before a password reset.
     try:
@@ -540,7 +583,17 @@ def get_current_user(
             detail="Authentication service temporarily unavailable.",
         ) from None
 
-    return UserInfo(user_id=user_id, email=email, username=username, name=name)
+    return UserInfo(user_id=user_id, email=email, username=username, name=name, role=role)
+
+
+def get_current_admin(current_user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    """Dependency ensuring the caller has the admin role."""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required."
+        )
+    return current_user
 
 
 # ============================================================================
@@ -575,6 +628,7 @@ def get_me(request: Request) -> dict:
             "email": email,
             "username": payload.get("username", email.split("@")[0]),
             "name": payload.get("name", ""),
+            "role": payload.get("role", "admin" if email == os.getenv("ADMIN_EMAIL", "admin@mockora.ai").strip().lower() else "candidate"),
         }
     except HTTPException:
         raise

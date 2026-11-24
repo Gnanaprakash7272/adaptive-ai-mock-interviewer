@@ -211,3 +211,41 @@ def test_fastapi_coach_endpoints():
     assert analytics.status_code == 200
     assert "funnel" in analytics.json()
     assert "response_rate" in analytics.json()
+
+
+def test_villain_chat_stream():
+    """Verify that villain_agent_chat_stream generates SSE chunks without error."""
+    from intelligence.career_coach.villain_agent import villain_agent_chat_stream
+
+    events = list(villain_agent_chat_stream(
+        user_message="What projects should I build?",
+        conversation_history=[{"role": "user", "content": "hello"}],
+        candidate_profile={"candidate": {"name": "Test User"}, "skills": ["Python", "Docker"]},
+        target_role="Backend Engineer",
+    ))
+    assert len(events) >= 1
+    # Check that events follow the SSE format
+    for event in events:
+        assert event.startswith("data: ")
+        assert event.endswith("\n\n")
+
+    # Last event must have done: True
+    import json
+    last_payload = json.loads(events[-1].replace("data: ", "").strip())
+    assert last_payload.get("done") is True
+
+
+def test_villain_chat_stream_endpoint():
+    """Verify POST /coach/villain/chat/stream returns 200 text/event-stream."""
+    client = TestClient(app)
+    resp = client.post(
+        "/coach/villain/chat/stream",
+        json={
+            "message": "What should I target?",
+            "conversation_history": [],
+            "target_role": "Backend Engineer",
+        },
+    )
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+

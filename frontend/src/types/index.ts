@@ -16,6 +16,7 @@ export interface User {
   name: string;
   email: string;
   username: string;
+  role?: string;
   avatarUrl?: string;
   targetRole?: UserRoleTarget;
   experienceYears?: number;
@@ -24,6 +25,45 @@ export interface User {
   readinessPercentage?: number;
   resumesCount?: number;
   createdAt?: string;
+}
+
+export interface AdminStats {
+  metrics: {
+    totalCandidates: number;
+    totalInterviews: number;
+    totalResumes: number;
+    avgScore: number;
+    completionRate: number;
+  };
+  systemHealth: {
+    apiStatus: string;
+    database: string;
+    geminiAI: string;
+    rateLimiter: string;
+    swrCache: string;
+  };
+  recentInterviews: Array<{
+    interview_id: number;
+    role: string;
+    overall_score?: number | null;
+    status: string;
+    started_at?: string;
+    user_id?: number;
+  }>;
+  adminInfo: {
+    email: string;
+    name: string;
+    role: string;
+  };
+}
+
+export interface AdminUserItem {
+  userId: number;
+  name: string;
+  interviewsCompleted: number;
+  performanceScore: number;
+  leaderboardScore: number;
+  role: string;
 }
 
 export interface SignupRequest {

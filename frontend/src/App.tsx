@@ -31,6 +31,7 @@ const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage').then((m
 const TermsPage = lazy(() => import('./pages/TermsPage').then((module) => ({ default: module.TermsPage })));
 const CareerCoachPage = lazy(() => import('./pages/CareerCoachPage').then((module) => ({ default: module.CareerCoachPage })));
 const ResumeBuilderPage = lazy(() => import('./pages/ResumeBuilderPage').then((module) => ({ default: module.ResumeBuilderPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
 
 import { useAuth } from './context/AuthContext';
 
@@ -85,6 +86,7 @@ export const App: React.FC = () => {
                     <Route path="/privacy" element={<PrivacyPolicyPage />} />
                     <Route path="/pricing" element={<Navigate to="/" replace />} />
                     <Route path="/terms" element={<TermsPage />} />
+                    <Route path="/admin" element={<AdminPage />} />
                     
                     {/* Protected Routes */}
                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />

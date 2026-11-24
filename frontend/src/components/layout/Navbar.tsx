@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck, Settings, FolderGit2 } from 'lucide-react';
+import { Sun, Moon, LogOut, ChevronDown, LayoutDashboard, Target, History, UserCheck, Settings, FolderGit2, ShieldCheck } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -144,6 +144,22 @@ export const Navbar: React.FC = () => {
                       <Settings className="w-4 h-4 text-slate-400" />
                       Platform Settings
                     </Link>
+
+                    {(user.role === 'admin' || user.email?.toLowerCase() === 'admin@mockora.ai') && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setShowProfileMenu(false)}
+                        className="flex items-center justify-between px-3 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <ShieldCheck className="w-4 h-4 text-red-500" />
+                          Admin Console
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+                          SUPER
+                        </span>
+                      </Link>
+                    )}
 
                     <button
                       onClick={() => {

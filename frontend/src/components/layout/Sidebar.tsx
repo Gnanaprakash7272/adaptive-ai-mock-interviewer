@@ -8,8 +8,10 @@ import {
   Trophy,
   FolderGit2,
   FileText,
+  ShieldCheck,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useAuth } from '../../context/AuthContext';
 
 interface NavItem {
   label: string;
@@ -19,6 +21,9 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.email?.toLowerCase() === 'admin@mockora.ai';
+
   const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Portfolio & Villain Agent', path: '/career-coach', icon: FolderGit2, badge: 'AI' },
@@ -27,6 +32,7 @@ export const Sidebar: React.FC = () => {
     { label: 'Interview Roles', path: '/roles', icon: Target },
     { label: 'Past History', path: '/history', icon: History },
     { label: 'Leaderboard', path: '/leaderboard', icon: Trophy },
+    ...(isAdmin ? [{ label: 'Admin Console', path: '/admin', icon: ShieldCheck, badge: 'ADMIN' }] : []),
   ];
 
   return (

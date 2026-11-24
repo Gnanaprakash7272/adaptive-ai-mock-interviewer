@@ -24,6 +24,7 @@ interface TokenPayload {
   email?: string;
   name?: string;
   username?: string;
+  role?: string;
   exp?: number;
 }
 
@@ -77,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               name: payload.name || payload.email.split('@')[0] || 'Candidate',
               email: payload.email,
               username: payload.username || payload.email.split('@')[0] || 'Candidate',
+              role: payload.role || (payload.email.toLowerCase().includes('admin') ? 'admin' : 'candidate'),
             });
             setIsLoading(false);
             return;
@@ -96,6 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: me.name || me.email.split('@')[0] || 'Candidate',
             email: me.email,
             username: me.username || me.email.split('@')[0] || 'Candidate',
+            role: (me as any).role || (me.email.toLowerCase().includes('admin') ? 'admin' : 'candidate'),
           });
         }
       } catch {
@@ -128,6 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: res.user.name || res.user.email?.split('@')[0] || 'Candidate',
       email: res.user.email,
       username: res.user.username || res.user.email?.split('@')[0] || 'Candidate',
+      role: (res.user as any).role || (res.user.email?.toLowerCase().includes('admin') ? 'admin' : 'candidate'),
     };
     console.log("AUTH USER (from login response):", { res, nextUser });
     setUser(nextUser);

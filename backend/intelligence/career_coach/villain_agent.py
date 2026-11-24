@@ -85,6 +85,7 @@ OUTPUT SCHEMA (Must be valid JSON):
   "suggested_prompts": ["3 short quick-reply suggestions candidate can ask next"]
 }"""
 
+
 def _format_candidate_profile(profile: dict[str, Any] | str | None) -> str:
     """Format candidate profile dict or string into a comprehensive, high-fidelity resume dossier."""
     if not profile:
@@ -517,6 +518,56 @@ def _fallback_villain(
     }
 
 
+def _format_history(conversation_history: list[dict[str, Any]] | None) -> str:
+    """Format conversation turns into a compact recent history string."""
+    if not conversation_history:
+        return ""
+    history_formatted = ""
+    for turn in conversation_history[-6:]:
+        r = turn.get("role", "user").upper()
+        c = turn.get("content", "")
+        history_formatted += f"\n{r}: {c}"
+    return history_formatted
+
+
+def _extract_partial_villain_message(full_text: str) -> str:
+    """Extract partial unescaped text from the 'villain_message' key of a streaming JSON string."""
+    marker = '"villain_message":'
+    idx = full_text.find(marker)
+    if idx == -1:
+        return ""
+    start = full_text.find('"', idx + len(marker))
+    if start == -1:
+        return ""
+    content = full_text[start + 1:]
+
+    res = []
+    i = 0
+    escaped = False
+    while i < len(content):
+        ch = content[i]
+        if escaped:
+            if ch == 'n':
+                res.append('\n')
+            elif ch == 't':
+                res.append('\t')
+            elif ch == '"':
+                res.append('"')
+            elif ch == '\\':
+                res.append('\\')
+            else:
+                res.append('\\' + ch)
+            escaped = False
+        elif ch == '\\':
+            escaped = True
+        elif ch == '"':
+            break
+        else:
+            res.append(ch)
+        i += 1
+    return "".join(res)
+
+
 def villain_agent_chat(
     user_message: str,
     conversation_history: list[dict[str, str]],
@@ -528,12 +579,7 @@ def villain_agent_chat(
     Dynamically roasts, architectures, analyzes resumes, and gives transition advice based on candidate context.
     """
     profile_summary = _format_candidate_profile(candidate_profile)
-
-    history_formatted = ""
-    for turn in conversation_history[-6:]:
-        r = turn.get("role", "user").upper()
-        c = turn.get("content", "")
-        history_formatted += f"\n{r}: {c}"
+    history_formatted = _format_history(conversation_history)
 
     user_prompt = (
         f"=== CANDIDATE RESUME & COMPLETE PROFILE DOSSIER ===\n"
@@ -665,6 +711,7 @@ def villain_agent_chat_stream(
                 from google.genai import types as _gtypes
                 client = _get_client(api_key)
                 full_text = ""
+                last_sent_len = 0
                 for chunk in client.models.generate_content_stream(
                     model=model_name,
                     contents=user_prompt,
@@ -676,17 +723,30 @@ def villain_agent_chat_stream(
                 ):
                     if chunk.text:
                         full_text += chunk.text
-                        # Stream word-by-word (split on spaces to give granular updates)
-                        words = chunk.text.split(" ")
-                        for word in words:
-                            if word:
-                                yield f"data: {json.dumps({'chunk': word + ' ', 'done': False})}\n\n"
+                        partial_msg = _extract_partial_villain_message(full_text)
+                        if len(partial_msg) > last_sent_len:
+                            delta = partial_msg[last_sent_len:]
+                            yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"
+                            last_sent_len = len(partial_msg)
 
                 # Parse the full accumulated JSON response
-                cleaned = full_text.strip()
-                if cleaned.startswith("```"):
-                    cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-                response = json.loads(cleaned)
+                try:
+                    cleaned = full_text.strip()
+                    if cleaned.startswith("```"):
+                        cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+                    response = json.loads(cleaned)
+                except Exception:
+                    response = {
+                        "villain_message": _extract_partial_villain_message(full_text) or full_text,
+                        "verdict": None,
+                        "projects": [],
+                        "brutal_truth": "",
+                        "suggested_prompts": [
+                            "What role should I target based on my skills?",
+                            "What should I do to reach SDE-1 Backend?",
+                            "How do I deploy this with Docker and CI/CD?",
+                        ],
+                    }
 
                 raw_projects = response.get("projects") or []
                 parsed_projects = []
@@ -734,15 +794,24 @@ def villain_agent_chat_stream(
     try:
         result = villain_agent_chat(
             user_message=user_message,
-            conversation_history=conversation_history,
+            conversation_history=conversation_history or [],
             candidate_profile=candidate_profile,
             target_role=target_role,
         )
-        yield f"data: {json.dumps({'chunk': result['villain_message'], 'done': False})}\n\n"
+        msg = result.get("villain_message") or ""
+        words = msg.split(" ")
+        for i in range(0, len(words), 3):
+            sub = " ".join(words[i:i+3]) + " "
+            yield f"data: {json.dumps({'chunk': sub, 'done': False})}\n\n"
         yield f"data: {json.dumps({'done': True, **result})}\n\n"
+        return
     except Exception as exc:
         logger.error("[VillainAgent][stream] Fallback sync also failed: %s", exc)
-        fallback_msg = "Sorry, I hit a snag connecting to the neural cortex. Give it another shot."
-        yield f"data: {json.dumps({'chunk': fallback_msg, 'done': False})}\n\n"
-        yield f"data: {json.dumps({'done': True, 'villain_message': fallback_msg, 'verdict': None, 'projects': [], 'brutal_truth': '', 'suggested_prompts': []})}\n\n"
+        fallback_res = _fallback_villain(user_message, profile_summary, target_role)
+        msg = fallback_res.get("villain_message") or ""
+        words = msg.split(" ")
+        for i in range(0, len(words), 3):
+            sub = " ".join(words[i:i+3]) + " "
+            yield f"data: {json.dumps({'chunk': sub, 'done': False})}\n\n"
+        yield f"data: {json.dumps({'done': True, **fallback_res})}\n\n"
 

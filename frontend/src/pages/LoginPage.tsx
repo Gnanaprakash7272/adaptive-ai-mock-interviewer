@@ -24,7 +24,11 @@ export const LoginPage: React.FC = () => {
     try {
       await login(email, password);
       addToast('success', 'Welcome back!', 'Successfully authenticated.');
-      navigate('/dashboard');
+      if (email.toLowerCase().includes('admin')) {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       addToast('error', 'Login Failed', err.message || 'Invalid email or password');
     } finally {

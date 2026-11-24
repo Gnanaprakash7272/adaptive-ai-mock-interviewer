@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
-import { apiService } from '../services/apiService';
+import { apiService, cacheManager } from '../services/apiService';
 import type { CandidateProfile, HistoryItem } from '../types';
 
 interface DashboardStat {
@@ -38,27 +38,38 @@ interface DashboardStat {
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
 
-  const [profile, setProfile] = useState<CandidateProfile | null>(null);
-  const [recentInterviews, setRecentInterviews] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<CandidateProfile | null>(() =>
+    cacheManager.get<CandidateProfile>('candidate_profile')
+  );
+  const [recentInterviews, setRecentInterviews] = useState<HistoryItem[]>(() =>
+    cacheManager.get<HistoryItem[]>('interviews_history') || []
+  );
+  const [loading, setLoading] = useState<boolean>(() =>
+    !cacheManager.get<CandidateProfile>('candidate_profile')
+  );
 
   useEffect(() => {
+    let isMounted = true;
     const fetchData = async () => {
       try {
         const [profileData, historyData] = await Promise.all([
           apiService.getCandidateProfile().catch(() => null),
           apiService.getHistory().catch(() => [])
         ]);
-        setProfile(profileData);
-        setRecentInterviews(historyData || []);
+        if (!isMounted) return;
+        if (profileData) setProfile(profileData);
+        if (historyData) setRecentInterviews(historyData);
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const profileStats = useMemo(() => {

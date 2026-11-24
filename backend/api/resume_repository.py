@@ -1,9 +1,23 @@
+import copy
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from api.db import supabase
 
 log = logging.getLogger(__name__)
+
+# In-memory TTL cache for candidate profiles to avoid multi-second DB waterfalls
+_PROFILE_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
+_PROFILE_CACHE_TTL = 300.0  # 5 minutes
+
+def invalidate_candidate_profile_cache(user_id: int | None = None) -> None:
+    """Invalidate profile cache for a user, or clear entirely."""
+    if user_id is None:
+        _PROFILE_CACHE.clear()
+    else:
+        _PROFILE_CACHE.pop(user_id, None)
 
 
 def _safe_str(value: Any) -> str:
@@ -47,6 +61,7 @@ def _parse_resume_date(d: Any) -> str | None:
 def save_candidate_profile(user_id: int, profile: dict[str, Any]) -> int:
     """Saves a candidate profile (nested dict) into relational tables and returns resume_id."""
     # 1. Upsert into resumes (insert if new, update if this user already has a resume)
+    invalidate_candidate_profile_cache(user_id)
     candidate = profile.get("candidate", {})
     resume_name = candidate.get("name", "Unknown Candidate")
     email = candidate.get("email", "")
@@ -213,6 +228,12 @@ def save_candidate_profile(user_id: int, profile: dict[str, Any]) -> int:
     return resume_id
 
 def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
+    # 1. Fast in-memory cache check
+    now = time.time()
+    cached = _PROFILE_CACHE.get(user_id)
+    if cached and (now - cached[0] < _PROFILE_CACHE_TTL):
+        return copy.deepcopy(cached[1])
+
     # Get most recent resume
     res = supabase.table("resumes").select("*").eq("user_id", user_id).order("resume_id", desc=True).limit(1).execute()
     if not res.data:
@@ -248,8 +269,35 @@ def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
         "publications": metadata.get("publications", [])
     }
 
-    # Fetch education
-    ed_res = supabase.table("education").select("*").eq("resume_id", resume_id).execute()
+    # Parallelize the 5 child queries to avoid 1.5s - 2.5s sequential DB roundtrips
+    def fetch_education():
+        return supabase.table("education").select("*").eq("resume_id", resume_id).execute()
+
+    def fetch_skills():
+        return supabase.table("skills").select("*").eq("resume_id", resume_id).execute()
+
+    def fetch_experiences():
+        return supabase.table("experiences").select("*").eq("resume_id", resume_id).execute()
+
+    def fetch_projects():
+        return supabase.table("projects").select("*, project_technologies(technology)").eq("resume_id", resume_id).execute()
+
+    def fetch_certifications():
+        return supabase.table("certifications").select("*").eq("resume_id", resume_id).execute()
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        f_ed = executor.submit(fetch_education)
+        f_sk = executor.submit(fetch_skills)
+        f_ex = executor.submit(fetch_experiences)
+        f_pr = executor.submit(fetch_projects)
+        f_ce = executor.submit(fetch_certifications)
+
+        ed_res = f_ed.result()
+        sk_res = f_sk.result()
+        ex_res = f_ex.result()
+        pr_res = f_pr.result()
+        cert_res = f_ce.result()
+
     for ed in ed_res.data:
         profile["education"].append({
             "degree": ed.get("degree", ""),
@@ -261,16 +309,12 @@ def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
             "details": ed.get("details", "")
         })
 
-    # Fetch skills
-    sk_res = supabase.table("skills").select("*").eq("resume_id", resume_id).execute()
     for sk in sk_res.data:
         cat = sk.get("category", "other")
         if cat not in profile["skills"]:
             profile["skills"][cat] = []
         profile["skills"][cat].append(sk.get("skill_name"))
 
-    # Fetch experiences
-    ex_res = supabase.table("experiences").select("*").eq("resume_id", resume_id).execute()
     for ex in ex_res.data:
         profile["experience"].append({
             "company": ex.get("company", ""),
@@ -282,8 +326,6 @@ def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
             "technologies": ex.get("technologies") if isinstance(ex.get("technologies"), list) else [],
         })
 
-    # Fetch projects
-    pr_res = supabase.table("projects").select("*, project_technologies(technology)").eq("resume_id", resume_id).execute()
     for pr in pr_res.data:
         techs = [t["technology"] for t in pr.get("project_technologies", [])]
         profile["projects"].append({
@@ -296,8 +338,6 @@ def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
             "key_contributions": []
         })
 
-    # Fetch certifications
-    cert_res = supabase.table("certifications").select("*").eq("resume_id", resume_id).execute()
     for cert in cert_res.data:
         profile["certifications"].append({
             "name": cert.get("name", ""),
@@ -305,4 +345,5 @@ def get_candidate_profile(user_id: int) -> dict[str, Any] | None:
             "year": cert.get("year", "")
         })
 
+    _PROFILE_CACHE[user_id] = (time.time(), copy.deepcopy(profile))
     return profile

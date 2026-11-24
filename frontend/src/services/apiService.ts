@@ -399,14 +399,25 @@ export const apiService = {
 
   /**
    * Fetch Candidate Profile (from Supabase / FastAPI)
+   * Uses instant stale-while-revalidate caching so pages render immediately.
    */
-  async getCandidateProfile(): Promise<CandidateProfile> {
+  async getCandidateProfile(forceRefresh = false): Promise<CandidateProfile> {
+    const cached = cacheManager.get<CandidateProfile>('candidate_profile');
+    if (cached && !forceRefresh) {
+      // Trigger background revalidation quietly
+      this.refreshCandidateProfile().catch(() => {});
+      return cached;
+    }
+    return this.refreshCandidateProfile();
+  },
+
+  async refreshCandidateProfile(): Promise<CandidateProfile> {
     const cached = cacheManager.get<CandidateProfile>('candidate_profile');
     const baseUrl = getApiBaseUrl();
     try {
       const response = await fetchWithAuth(`${baseUrl}/candidate/profile`);
       const data = (await response.json()) as CandidateProfile;
-      cacheManager.set('candidate_profile', data, 5 * 60 * 1000);
+      cacheManager.set('candidate_profile', data, 10 * 60 * 1000);
       return data;
     } catch (err: any) {
       if (cached && (err.status === 0 || err.code === 'NETWORK_ERROR' || err.status >= 500)) {
@@ -526,6 +537,7 @@ export const apiService = {
       body: JSON.stringify(request),
     });
 
+    cacheManager.invalidate('interviews_history');
     return (await response.json()) as StartInterviewResponse;
   },
 
@@ -544,7 +556,11 @@ export const apiService = {
       body: JSON.stringify(request),
     });
 
-    return (await response.json()) as SubmitAnswerResponse;
+    const result = (await response.json()) as SubmitAnswerResponse;
+    if (result.status === 'completed') {
+      cacheManager.invalidate('interviews_history');
+    }
+    return result;
   },
 
   /**
@@ -578,24 +594,37 @@ export const apiService = {
   },
   /**
    * Step 12: GET /interviews
-   * Fetch past interview history with filtering
+   * Fetch past interview history with filtering & instant stale-while-revalidate caching
    */
-  async getHistory(searchQuery?: string): Promise<HistoryItem[]> {
+  async getHistory(searchQuery?: string, forceRefresh = false): Promise<HistoryItem[]> {
+    const cacheKey = 'interviews_history';
+    const cached = cacheManager.get<HistoryItem[]>(cacheKey);
+    if (cached && !forceRefresh && !searchQuery) {
+      // Return cached immediately and refresh in background
+      this.refreshHistory().catch(() => {});
+      return cached;
+    }
+    const items = await this.refreshHistory();
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return items.filter((i) => i.roleTitle.toLowerCase().includes(q));
+    }
+    return items;
+  },
+
+  async refreshHistory(): Promise<HistoryItem[]> {
     const baseUrl = getApiBaseUrl();
     try {
       const response = await fetchWithAuth(`${baseUrl}/interviews`);
       if (response.ok) {
         const items = (await response.json()) as HistoryItem[];
-        if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          return items.filter((i) => i.roleTitle.toLowerCase().includes(q));
-        }
+        cacheManager.set('interviews_history', items, 3 * 60 * 1000);
         return items;
       }
     } catch {
-      // Backend unavailable — return empty list rather than fake data
+      // Backend unavailable — return cached or empty list rather than fake data
     }
-    return [];
+    return cacheManager.get<HistoryItem[]>('interviews_history') || [];
   },
 
   async getLeaderboard(): Promise<LeaderboardEntry[]> {

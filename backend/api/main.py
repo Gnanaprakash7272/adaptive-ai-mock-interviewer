@@ -455,6 +455,19 @@ def get_interview_history(current_user: UserInfo = Depends(get_current_user)):
             detail=f"Failed to retrieve interview history: {exc}"
         )
 
+    # Pre-fetch reports for interviews missing overall_score in a single query
+    missing_ids = [row["interview_id"] for row in interviews if row.get("overall_score") is None]
+    score_by_interview = {}
+    if missing_ids:
+        try:
+            from api.db import supabase
+            reports_res = supabase.table("interview_reports").select("interview_id, overall_score").in_("interview_id", missing_ids).execute()
+            if reports_res.data:
+                for r in reports_res.data:
+                    score_by_interview[r["interview_id"]] = r.get("overall_score", 0)
+        except Exception as exc:
+            logger.warning("Failed to batch fetch interview reports, falling back to individual lookup: %s", exc)
+
     history = []
     for row in interviews:
         # Map DB status → frontend status label
@@ -468,13 +481,15 @@ def get_interview_history(current_user: UserInfo = Depends(get_current_user)):
         # overall_score is stored as 0-10 float in DB
         overall_score = row.get("overall_score")
         if overall_score is None:
-            # Fetch from report if available
-            try:
-                report_row = repo.get_interview_report(row["interview_id"])
-                if report_row:
-                    overall_score = report_row.get("overall_score", 0)
-            except Exception:
-                overall_score = 0
+            if row["interview_id"] in score_by_interview:
+                overall_score = score_by_interview[row["interview_id"]]
+            else:
+                try:
+                    report_row = repo.get_interview_report(row["interview_id"])
+                    if report_row:
+                        overall_score = report_row.get("overall_score", 0)
+                except Exception:
+                    overall_score = 0
         overall_score = overall_score or 0
 
         # Duration: use started_at → completed_at if both exist
